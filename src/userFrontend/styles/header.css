@@ -1,0 +1,530 @@
+/* ===== MAIN HEADER ===== */
+.main-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 60px;
+  background-color: var(--color-card);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.menu-icon {
+  display: none;
+}
+
+/* ===== LOGO ===== */
+.logo {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.logo-pic {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.logo-name {
+  margin: 0 0.5rem;
+  /* font-size: 0.95rem; */
+  font-weight: 500;
+}
+
+/* ===== SEARCH ===== */
+
+.search-box {
+  display: flex;
+  align-items: center;
+  width: 40%;
+  max-width: 450px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: #f8f9fb;
+  padding-left: 1rem;
+}
+
+.search-icon {
+  /* padding: 10px 12px; */
+  font-size: 1rem;
+  color: var(--color-dark);
+}
+
+.search-box input {
+  flex: 1;
+  padding: 10px 12px;
+  border: none;
+  outline: none;
+  font-size: 0.95rem;
+  color: var(--color-text-primary);
+  background: transparent;
+}
+
+.search-box:focus-within {
+  border-color: var(--color-hover);
+}
+
+/* ===== ACTION BUTTONS ===== */
+.header-actions {
+  display: flex;
+  gap: 14px;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.header-btn {
+  padding: 8px 18px;
+  border: 1px solid var(--color-dark);
+  background-color: transparent;
+  color: var(--color-text-primary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: 500;
+}
+
+.header-btn:hover {
+  background-color: var(--color-dark);
+  border-color: var(--color-dark);
+  color: #fff;
+}
+
+.signup-btn {
+  padding: 8px 18px;
+  border: none;
+  background-color: var(--color-dark);
+  color: #fff;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.signup-btn:hover {
+  background-color: var(--color-dark-hover);
+}
+
+/* ===== CATEGORY NAV ===== */
+.navBar {
+  display: flex;
+  justify-content: center;
+  gap: 30px;
+  padding: 14px;
+  background-color: var(--color-card);
+  border-bottom: 1px solid var(--color-border);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+
+}
+
+.navBar span {
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.navBar span:hover {
+  color: var(--color-gold-dark);
+}
+
+/* ===== favourite ICON ===== */
+.icons {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 6px 10px;
+  width: 5rem;
+}
+
+.header-icon {
+  font-size: 1.5rem;
+}
+
+/* ===== NAV ===== */
+.navBar span,
+.dropdown-title {
+  cursor: pointer;
+  position: relative;
+  padding: 0 4px;
+}
+
+.dropdown-title:hover {
+  color: var(--color-gold);
+}
+
+/* ===== DROPDOWN ===== */
+.dropdown {
+  position: relative;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 25px;
+  left: 0;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+  display: none;
+  flex-direction: column;
+  min-width: 11.25rem;
+  width: 12rem;
+  max-width: 13rem;
+  max-height: 20rem;
+  padding: 10px 0;
+  z-index: 1000;
+  overflow-y: auto;
+}
+
+/* SCROLLBAR WIDTH */
+.dropdown-menu::-webkit-scrollbar {
+  width: 6px;
+  background-color: white;
+}
+
+/* THUMB */
+.dropdown-menu::-webkit-scrollbar-thumb {
+  background: var(--color-gold);
+  border-radius: 10px;
+}
+
+.dropdown-menu span {
+  padding: 10px 16px;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  transition: 0.3s ease;
+  margin: 0 0.5rem;
+  border-radius: 8px;
+}
+
+.dropdown-menu span:hover {
+  background: var(--color-gold-light);
+  color: var(--color-dark);
+}
+
+/* Show dropdown on hover */
+.dropdown-title:hover .dropdown-menu {
+  display: flex;
+}
+
+.fav-wrapper {
+  position: relative;
+}
+
+/* DROPDOWN */
+.fav-dropdown {
+  position: absolute;
+  top: 45px;
+  right: 0;
+  width: 320px;
+  max-height: 400px;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  animation: fadeIn 0.2s ease;
+  z-index: 100;
+}
+
+/* ITEM */
+.fav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.fav-item:hover {
+  background: #f5f5f5;
+}
+
+/* IMAGE */
+.fav-item img {
+  width: 55px;
+  height: 55px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+/* TEXT */
+.fav-info {
+  flex: 1;
+}
+
+.fav-info p {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.fav-info span {
+  font-size: 13px;
+  color: #777;
+}
+
+/* REMOVE HEART */
+.remove-heart {
+  color: var(--color-dark);
+  cursor: pointer;
+  font-size: 16px;
+  transition: 0.2s;
+}
+
+.remove-heart:hover {
+  transform: scale(1.2);
+}
+
+/* EMPTY STATE */
+.empty {
+  text-align: center;
+  padding: 20px;
+  font-size: 14px;
+  color: #999;
+}
+
+/* ANIMATION */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.mobile-search-icon{
+  display: none;
+}
+
+/* =========================
+   RESPONSIVE BREAKPOINTS
+========================= */
+
+/* ===== LAPTOP (1200px ↓) ===== */
+@media (max-width: 1200px) {
+  .main-header {
+    padding: 16px 40px;
+  }
+
+  .search-box {
+    width: 45%;
+  }
+}
+
+/* ===== TABLET (992px ↓) ===== */
+@media (max-width: 992px) {
+
+  .main-header {
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 15px 25px;
+  }
+
+  /* LOGO + ACTIONS TOP ROW */
+  .logo {
+    flex: 1;
+  }
+
+  .header-actions {
+    order: 2;
+  }
+
+  /* SEARCH FULL WIDTH */
+  .search-box {
+    order: 3;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* BUTTONS SMALLER */
+  .header-btn,
+  .signup-btn {
+    padding: 6px 12px;
+    font-size: 14px;
+  }
+
+  /* ICON SIZE */
+  .header-icon {
+    font-size: 1.3rem;
+  }
+}
+
+/* ===== MOBILE (768px ↓) ===== */
+@media (max-width: 768px) {
+
+  .main-header {
+    padding: 12px 15px;
+  }
+
+  /* HIDE TEXT LOGO */
+  /* .logo-name {
+    display: none;
+  } */
+
+  /* SEARCH COMPACT */
+  .search-box {
+    padding-left: 10px;
+  }
+
+  .search-box input {
+    font-size: 14px;
+  }
+
+  /* HIDE LOGIN TEXT */
+  /* .header-btn {
+    display: none;
+  } */
+
+  /* KEEP SIGNUP SMALL */
+  .signup-btn {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+
+  /* ICONS TIGHT */
+  .icons {
+    width: auto;
+    gap: 10px;
+    padding: 0;
+  }
+}
+
+/* ===== MOBILE MENU (480px ↓) ===== */
+@media (max-width: 480px) {
+
+  /* HEADER LAYOUT */
+  .main-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: nowrap;
+    /* ✅ STOP WRAPPING */
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 0;
+    /* ❌ remove previous spacing */
+  }
+
+  /* HAMBURGER ICON */
+  .menu-icon {
+    font-size: 20px;
+    cursor: pointer;
+    display: block;
+  }
+
+  /* LOGO */
+  .logo {
+    gap: 6px;
+  }
+
+  .logo-name {
+    font-size: 16px;
+  }
+
+  /* SEARCH FULL WIDTH */
+  .search-box {
+    width: 100%;
+    margin-top: 8px;
+  }
+
+  .search-box input {
+    font-size: 13px;
+  }
+
+  /* ICONS */
+  .icons {
+    gap: 12px;
+  }
+
+  .header-icon {
+    font-size: 1.3rem;
+  }
+
+  /* BUTTONS */
+  .header-btn {
+    display: none;
+    /* hide login */
+  }
+
+  .signup-btn {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+
+  /* NAVBAR HIDDEN BY DEFAULT */
+  .navBar {
+    position: fixed;
+    top: 0;
+    left: -260px;
+    width: 240px;
+    height: 100vh;
+    background: white;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding: 20px 10px;
+    gap: 15px;
+    z-index: 2000;
+    transition: 0.3s ease;
+    box-shadow: 5px 0 20px rgba(0, 0, 0, 0.15);
+  }
+
+
+  .navBar.active {
+    left: 0;
+    /* slide in */
+  }
+
+  .navBar span {
+    width: 100%;
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+  }
+
+  .navBar span:hover{
+    border-radius: 8px;
+    background-color: var(--color-gold-light);
+    color: var(--color-dark-hover);
+  }
+
+  /* DROPDOWN FIX FOR MOBILE */
+  .dropdown-menu {
+    position: static;
+    box-shadow: none;
+    border: none;
+    display: none;
+  }
+
+  .dropdown-title:hover .dropdown-menu {
+    display: none;
+    /* disable hover on mobile */
+  }
+
+  .mobile-search {
+    width: 100%;
+    margin-top: 10px;
+  }
+
+  
+}

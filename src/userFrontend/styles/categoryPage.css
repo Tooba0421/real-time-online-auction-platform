@@ -1,0 +1,73 @@
+.categories {
+  background: #f8f9fb;
+  min-height: 30vh;
+}
+
+/* CONTAINER */
+.category-page {
+  padding: 40px 60px;
+  /* margin-left: 80px; */
+}
+
+/* TITLE */
+.category-title {
+  font-size: 32px;
+  margin-bottom: 30px;
+  font-weight: 600;
+}
+
+/* TITLE */
+.category-title {
+  font-size: 32px;
+  font-weight: 600;
+}
+
+/* FLEX GRID */
+.category-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 30px;
+  justify-content: first baseline;
+}
+
+/* 🔥 IMPORTANT: CONTROL CARD WIDTH */
+.category-grid .product-card {
+  flex: 1 1 calc(25% - 25px);
+  /* 4 cards per row */
+  max-width: calc(25% - 25px);
+}
+
+/* TABLET */
+@media (max-width: 1000px) {
+  .category-grid .product-card {
+    flex: 1 1 calc(33.33% - 25px);
+    /* 3 per row */
+    max-width: calc(33.33% - 25px);
+  }
+}
+
+/* SMALL TABLET */
+@media (max-width: 700px) {
+  .category-grid .product-card {
+    flex: 1 1 calc(50% - 25px);
+    /* 2 per row */
+    max-width: calc(50% - 25px);
+  }
+}
+
+/* MOBILE */
+@media (max-width: 500px) {
+  .category-grid .product-card {
+    flex: 1 1 100%;
+    /* 1 per row */
+    max-width: 100%;
+  }
+}
+
+/* EMPTY */
+.no-products {
+  font-size: 16px;
+  color: #777;
+  text-align: center;
+  margin-top: 40px;
+}

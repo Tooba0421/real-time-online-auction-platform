@@ -1,0 +1,21 @@
+/* HEADER (arrow + title) */
+.page-header {
+  display: flex;
+  align-items: first baseline;
+  gap: 15px;
+}
+
+.page-heading {
+  padding-bottom: 1.5rem;
+}
+
+/* BACK BUTTON */
+.back-btn {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: #000;
+  padding: 0;
+}

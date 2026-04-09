@@ -1,0 +1,190 @@
+.footer {
+  background: #0f172a;
+  color: #fff;
+  font-family: "Inter", sans-serif;
+}
+
+/* ===== CTA SECTION ===== */
+.footer-cta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 80px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.footer-cta p {
+  font-size: 18px;
+  font-weight: 500;
+  margin-bottom: 0;
+}
+
+.cta-buttons {
+  display: flex;
+  gap: 15px;
+}
+
+.btn-primary {
+  background: var(--color-gold);
+  color: #fff;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-primary:hover{
+  background: var(--color-gold-dark);
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-outline:hover{
+  border-color: var(--color-gold);
+  color: var(--color-gold);
+}
+
+/* ===== MAIN FOOTER ===== */
+.footer-container {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 40px;
+  padding: 50px 80px;
+}
+
+.footer-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.footer-column h4 {
+  font-size: 16px;
+  margin-bottom: 10px;
+  color: var(--color-gold);
+}
+
+.footer-column a {
+  color: #fff;
+  font-size: 14px;
+  text-decoration: none;
+  transition: 0.3s;
+}
+
+.footer-column a:hover {
+  color: var(--color-gold);
+}
+
+/* LOGO */
+.footer-logo {
+  width: 140px;
+  margin-bottom: 15px;
+}
+
+.footer-column p {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* CONTACT */
+.contact-info p {
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* SELLER BUTTON */
+.seller-btn {
+  width: 60%;
+  margin-top: 10px;
+  padding: 10px;
+  background: var(--color-gold);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  cursor: pointer;
+}
+
+/* SOCIALS */
+.footer-socials {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.footer-socials-icon:hover{
+  color: var(--color-gold);
+}
+
+/* ===== BOTTOM ===== */
+.footer-bottom {
+  border-top: 1px solid rgba(255,255,255,0.1);
+  padding: 20px 80px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+}
+
+.footer-bottom p{
+  margin-bottom: 0;
+}
+
+.footer-links {
+  display: flex;
+  gap: 20px;
+}
+
+.footer-links a {
+  color: #fff;
+  text-decoration: none;
+}
+
+.footer-links a:hover {
+  color: var(--color-gold);
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 1024px) {
+  .footer-container {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .footer-cta {
+    flex-direction: column;
+    gap: 15px;
+    text-align: center;
+  }
+  
+  .footer-container {
+    grid-template-columns: repeat(2, 1fr);
+    padding: 40px;
+  }
+  
+  .footer-bottom {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+  .seller-btn{
+    width: 25%;
+  }
+}
+@media (max-width: 480px) {
+  .footer-container {
+    grid-template-columns: 1fr;
+    padding: 20px;
+  }
+  
+}

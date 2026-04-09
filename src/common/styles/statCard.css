@@ -1,0 +1,94 @@
+.stat-card {
+  flex: 1 1 22%;
+  min-width: 14rem;
+  max-width: 18rem;
+  background: #ffffff;
+  border-radius: 1rem;
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.08);
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+}
+
+/* Gold top accent */
+.stat-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 5px;
+  width: 100%;
+  background: linear-gradient(90deg, #D4AF37, #F5D76E);
+}
+
+.stat-card:hover {
+  transform: translateY(-0.3rem);
+  box-shadow: 0 0.8rem 2rem rgba(0, 0, 0, 0.15);
+  background: #F9FAFB;
+}
+
+.stat-card-title {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.stat-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.stat-card-top {
+  margin-bottom: 0.5rem;
+}
+
+.stat-card-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 0;
+}
+
+.stat-card-subtitle {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #6B7280;
+}
+
+/* Tablet */
+@media (max-width: 1024px) {
+  .stat-card {
+    flex: 1 1 30%;      /* 3 cards per row */
+    min-width: 12rem;
+  }
+}
+
+/* Small Tablets / Large Phones */
+@media (max-width: 768px) {
+  .stat-card {
+    flex: 1 1 45%;      /* 2 cards per row */
+    min-width: 10rem;
+  }
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+  .stat-card {
+    flex: 1 1 100%;     /* 1 card per row */
+    min-width: 100%;
+    max-width: 100%;
+  }
+
+  .stat-card-value {
+    font-size: 1.5rem;
+  }
+
+  .stat-card-title {
+    font-size: 0.95rem;
+  }
+}

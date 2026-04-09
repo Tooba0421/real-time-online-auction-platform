@@ -1,0 +1,225 @@
+/* ================= CARD ================= */
+
+.product-card {
+    width: 100%;
+    max-width: 380px;
+    background: white;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 0.3rem 1.5rem rgba(0, 0, 0, 0.15);
+    transition: 0.3s ease;
+    display: flex;
+    flex-direction: column;
+}
+
+.product-card:hover {
+    transform: translateY(-5px);
+}
+
+/* ================= IMAGE ================= */
+
+.image-wrapper {
+    position: relative;
+}
+
+.image-wrapper img {
+    width: 100%;
+    height: clamp(180px, 25vw, 260px);
+    object-fit: cover;
+    cursor: pointer;
+    display: block;
+}
+
+/* ================= FAVORITE ================= */
+
+.favorite-icon {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: white;
+    padding: 5px 8px;
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 2;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.heart {
+    font-size: 16px;
+    color: var(--color-dark);
+}
+
+.heart.filled {
+    color: var(--color-dark-hover);
+}
+
+/* ================= TIMER ================= */
+
+.timer {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.7);
+    padding: 12px 15px;
+    border-radius: 8px;
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    color: white;
+    max-width: 90%;
+}
+
+.timer div {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    margin: 0 0.3rem;
+}
+
+.timer strong {
+    font-size: 1rem;
+}
+
+.timer span {
+    font-size: 9px;
+    text-transform: uppercase;
+}
+
+/* ================= CONTENT ================= */
+
+.card-content {
+    padding: 16px;
+    text-align: left;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.card-content h3 {
+    font-size: 15px;
+    margin-bottom: 8px;
+    line-height: 1.3;
+}
+
+.seller {
+    font-size: 13px;
+    color: gray;
+    margin-bottom: 12px;
+}
+
+/* ================= BID SECTION ================= */
+
+.bid-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: auto;
+}
+
+.bid-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.bid-label {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    margin-bottom: 2px;
+}
+
+.bid-price {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.bid-count {
+    font-size: 12px;
+    color: gray;
+    margin-left: 4px;
+}
+
+/* ================= BUTTON ================= */
+
+.bid-btn {
+    padding: 8px 12px;
+    background: var(--color-dark);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: 0.3s ease;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.bid-btn:hover {
+    background: var(--color-dark-hover);
+}
+
+/* ================= RESPONSIVE ================= */
+
+/* Tablet */
+@media (max-width: 1024px) {
+    .product-card {
+        max-width: 100%;
+    }
+
+    .card-content {
+        padding: 14px;
+    }
+
+    .card-content h3 {
+        font-size: 14px;
+    }
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+
+    .timer {
+        padding: 6px 10px;
+        gap: 8px;
+        max-width: 80%;
+    }
+
+    .timer strong {
+        font-size: 0.9rem;
+    }
+
+    .bid-btn {
+        width: 100%;
+        text-align: center;
+    }
+}
+
+/* Small Mobile */
+@media (max-width: 480px) {
+
+    .product-card {
+        border-radius: 10px;
+    }
+
+    .image-wrapper img {
+        height: 180px;
+    }
+
+    .card-content {
+        padding: 12px;
+    }
+
+    .card-content h3 {
+        font-size: 13px;
+    }
+
+    .bid-price {
+        font-size: 13px;
+    }
+
+    .bid-count {
+        font-size: 11px;
+    }
+}

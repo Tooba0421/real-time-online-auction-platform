@@ -1,0 +1,439 @@
+/*====== Banner section container ============*/
+.banner-section {
+  position: relative;
+  width: 100%;
+  height: auto;
+  min-height: 400px;
+  /* overflow: hidden; */
+  /* margin-bottom: 40px; */
+}
+
+/* Banner image */
+.banner-image {
+  width: 100%;
+  height: 100%;
+  /* display: block; */
+  object-fit: cover;
+}
+
+/* Overlay to make text/buttons pop */
+.banner-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  /* height: 50vh; */
+  background: rgba(0, 0, 0, 0.35);
+  /* semi-transparent dark overlay */
+}
+
+/* Banner content */
+.banner-content {
+  position: absolute;
+  left: 60px;
+  bottom: 100px;
+  color: white;
+  z-index: 2;
+  max-width: 550px;
+}
+
+/* Headline */
+.banner-title {
+  font-size: 36px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+/* Subtext */
+.banner-subtext {
+  font-size: 18px;
+  margin-bottom: 20px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+/* Buttons */
+.banner-buttons {
+  display: flex;
+  gap: 20px;
+}
+
+.banner-button {
+  padding: 12px 25px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: 0.3s ease;
+  border: none;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+}
+
+.banner-button.primary {
+  background-color: var(--color-gold);
+  color: white;
+}
+
+.banner-button.primary:hover {
+  background-color: var(--color-gold-dark);
+}
+
+.banner-button.secondary {
+  background-color: var(--color-card);
+  color: var(--color-dark);
+}
+
+.banner-button.secondary:hover {
+  background-color: var(--color-hover);
+}
+
+/* ===== Category Section ===== */
+
+.category-section {
+  padding: 60px 100px;
+}
+
+.category-container {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 30px;
+}
+
+/* Category Card */
+
+.category-card {
+  width: 100%;
+  max-width: 120px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.category-image {
+  width: 100px;
+  height: 100px;
+  border-radius: 18px;
+  overflow: hidden;
+  margin: auto;
+  background: white;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+  transition: 0.3s ease;
+}
+
+.category-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.category-card:hover .category-image {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.15);
+}
+
+.category-name {
+  display: block;
+  margin-top: 12px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--color-dark);
+  line-height: 1.3;
+}
+
+/*====== auctions section container ============*/
+.popular {
+  background: #f1f1f1;
+  text-align: center;
+}
+
+.auction-section {
+  padding: 60px;
+}
+
+.latest {
+  text-align: center;
+  background: #f9f9f9;
+}
+
+.auction-heading {
+  font-size: 32px;
+  margin-bottom: 20px;
+  font-weight: 600;
+}
+
+.slider-wrapper {
+  overflow: hidden;
+}
+
+.card-slider {
+  display: flex;
+  gap: 25px;
+  padding: 1.7rem;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+}
+
+.card-slider > * {
+    flex: 0 0 auto;
+    width: clamp(260px, 28vw, 360px);
+}
+
+.card-slider::-webkit-scrollbar {
+  display: none;
+}
+
+.slider-controls {
+  margin-top: 30px;
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+}
+
+.slider-controls button {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  background: white;
+  color: var(--color-dark);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: 0.3s ease;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.slider-controls button:hover {
+  background: var(--color-dark);
+  color: white;
+}
+
+/*====== Why Choose Section ============*/
+
+.why-section {
+  padding: 80px;
+  background: white;
+  text-align: center;
+}
+
+.why-section h2 {
+  font-size: 34px;
+  margin-bottom: 50px;
+  font-weight: 600;
+}
+
+.why-container {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 40px;
+}
+
+.why-card {
+  width: 22rem;
+  border-radius: 10px;
+  text-align: center;
+  padding: 2rem;
+  border: 1px solid var(--color-border);
+}
+
+.why-card:hover {
+  border: 1px solid var(--color-dark);
+  box-shadow: 0 0.3rem 1.5rem rgba(0, 0, 0, 0.15);
+
+}
+
+.why-icon {
+  width: 55px;
+  height: 55px;
+  margin: auto;
+  margin-bottom: 15px;
+  border-radius: 50%;
+  background: #eaf4fb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  color: var(--color-dark);
+}
+
+.why-card h3 {
+  font-size: 20px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.why-card p {
+  color: #666;
+  font-size: 15px;
+}
+
+/* ===== RESPONSIVE ===== */
+
+@media (max-width: 1200px) {
+  .banner-content {
+    left: 60px;
+    bottom: 80px;
+    max-width: 500px;
+  }
+
+  .banner-section {
+    height: 40vh;
+  }
+
+  .banner-title {
+    font-size: 30px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .banner-section {
+    height: 30vh;
+  }
+
+  .banner-content {
+    bottom: 50px;
+    max-width: 500px;
+  }
+
+  .category-section {
+    padding: 60px 50px;
+  }
+}
+
+@media (max-width: 768px) {
+
+  .banner-section {
+    height: 30vh;
+  }
+
+  .banner-content {
+    left: 30px;
+    bottom: 40px;
+  }
+
+  .banner-title {
+    font-size: 28px;
+  }
+
+  .banner-subtext {
+    font-size: 15px;
+  }
+
+  .banner-buttons {
+    gap: 10px;
+  }
+
+  .banner-button {
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+
+  .category-section {
+    padding: 60px 20px;
+  }
+
+  .auction-section {
+    padding: 50px 30px;
+  }
+
+  .auction-heading {
+    font-size: 26px;
+  }
+
+  .card-slider {
+    gap: 15px;
+  }
+
+  .why-section {
+    padding: 60px 30px;
+  }
+
+  .why-container {
+    grid-template-columns: 1fr;
+  }
+
+  .why-section h2 {
+    font-size: 26px;
+  }
+}
+
+@media (max-width: 480px) {
+  .banner-section {
+    height: 20vh;
+    min-height: 30vh;
+  }
+
+
+  .banner-content {
+    left: 15px;
+    bottom: 20px;
+    max-width: 260px;
+  }
+
+  .banner-title {
+    font-size: 15px;
+  }
+
+  .banner-subtext {
+    font-size: 12px;
+  }
+
+  .banner-buttons {
+    /* flex-direction: column; */
+    gap: 8px;
+
+  }
+
+  .banner-button {
+    width: 100%;
+  }
+
+  .category-section {
+    padding: 40px 15px;
+  }
+
+  .category-container {
+    flex-wrap: nowrap;
+    justify-content: start;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  .category-image {
+    width: 75px;
+    height: 75px;
+  }
+
+  .category-name {
+    font-size: 13px;
+  }
+
+  .auction-section {
+    padding: 40px 15px;
+  }
+
+  .auction-heading {
+    font-size: 22px;
+  }
+
+  .slider-controls {
+    display: none;
+    /* hide arrows on mobile */
+  }
+
+  .why-section {
+    padding: 40px 15px;
+  }
+
+  .why-section h2 {
+    font-size: 22px;
+  }
+
+  .why-card {
+    padding: 20px;
+  }
+}

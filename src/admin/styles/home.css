@@ -1,0 +1,16 @@
+
+@media (max-width: 768px) {
+  .chart-container {
+    height: 260px;
+  }
+
+  .chart-card {
+    flex: 1 1 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .chart-container {
+    height: 220px;
+  }
+}

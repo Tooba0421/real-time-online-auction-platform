@@ -1,0 +1,123 @@
+/* Only seller specific styles */
+
+.sub-text {
+  font-size: 0.75rem;
+  color: #6B7280;
+}
+
+.earnings {
+  font-weight: 600;
+}
+
+.default {
+  margin-right: 0.5rem;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+}
+
+
+/* ===== CNIC MODAL ===== */
+
+.cnic-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.cnic-modal {
+  background: #fff;
+  padding: 25px;
+  border-radius: 10px;
+  width: 600px;
+  max-width: 90%;
+  text-align: center;
+}
+
+.cnic-images {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 20px 0;
+}
+
+.cnic-images img {
+  width: 100%;
+  max-width: 250px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+}
+
+.close-btn {
+  padding: 8px 16px;
+  border: none;
+  background: #c0392b;
+  color: #fff;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.empty-row {
+  text-align: center;
+  padding: 20px;
+  color: #888;
+  font-style: italic;
+}
+
+.reason-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reason-modal {
+  background: white;
+  padding: 20px;
+  width: 400px;
+  border-radius: 8px;
+}
+
+.reason-modal textarea {
+  width: 100%;
+  height: 100px;
+  margin: 10px 0;
+  padding: 8px;
+  background-color: white;
+  color: #000;
+  border-radius: 6px;
+  outline: none;
+  border: 1px solid rgb(198, 197, 197);
+}
+.reason-modal textarea:focus {
+  border: 1px solid rgb(144, 144, 144);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.modal-actions button{
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+}
+
+.cancel{
+  background-color: #991B1B;
+}
+
+.confirm{
+  background-color: #0e5940;
+}

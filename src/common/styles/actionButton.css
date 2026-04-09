@@ -1,0 +1,54 @@
+/* Container for multiple buttons */
+.actions {
+ 
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  /* flex-wrap: nowrap;   
+  white-space: nowrap;  */
+
+}
+
+/* Base Button */
+.button {
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+/* ================= VARIANTS ================= */
+
+/* Primary / Approve */
+.button.success {
+  background-color: #0e5940;
+  color: #fff;
+}
+
+.button.success:hover {
+  background-color: #06422f;
+}
+
+/* Secondary / Blue */
+.button.secondary {
+  background-color: #2563EB;
+  color: #fff;
+}
+
+.button.secondary:hover {
+  background-color: #1E40AF;
+}
+
+/* Danger / Reject */
+.button.danger {
+  background-color: #991B1B;
+  color: #fff;
+}
+
+.button.danger:hover {
+  background-color: #7F1D1D;
+}

@@ -1,0 +1,32 @@
+/* ===== Status Summary ===== */
+.status-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.status-box {
+  background: white;
+  border-radius: 0.8rem;
+  padding: 1.2rem;
+  box-shadow: 0 6px 18px rgba(17, 24, 39, 0.05);
+  text-align: center;
+}
+
+.status-box span {
+  font-size: 1.8rem;
+  font-weight: 700;
+  display: block;
+}
+
+.status-box p {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin-top: 0.3rem;
+}
+
+/* Colors */
+.status-box.live span { color: #22c55e; }
+.status-box.paused span { color: #facc15; }
+.status-box.ended span { color: #ef4444; }

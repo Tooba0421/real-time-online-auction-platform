@@ -1,0 +1,360 @@
+/* ======================================================
+   ROOT SELLER LAYOUT
+====================================================== */
+
+.seller-layout {
+  display: flex;
+  min-height: 100vh;
+  overflow: hidden;
+  font-family: Arial, sans-serif;
+  color: #111827;
+}
+
+/* ======================================================
+   SIDEBAR
+====================================================== */
+
+.seller-sidebar {
+  width: 16rem;
+  height: 100vh;
+  background-color: #182135;
+  color: #F9FAFB;
+  padding: 1.5rem 1rem;
+  position: fixed;
+  top: 0;
+  left: 0;
+  overflow-y: auto;
+  transition: width 0.3s ease;
+  z-index: 1000;
+}
+
+.sidebar-title {
+  text-align: center;
+  margin-bottom: 2rem;
+  color: #D4AF37;
+  font-weight: bold;
+  font-size: 1.4rem;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+
+.sidebar-toggle {
+  font-size: 1.4rem;
+  cursor: pointer;
+  color: #D4AF37;
+}
+
+.sidebar-item {
+  background: transparent;
+  border: none;
+  padding: 0.6rem 1rem;
+  border-radius: 0.4rem;
+  color: #F9FAFB;
+      font-weight: 500;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.sidebar-item:hover,
+.sidebar-item.active {
+  background-color: #1F2937;
+  color: #D4AF37;
+}
+
+.sidebar-icon {
+  font-size: 1.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #F9FAFB;
+}
+
+.seller-sidebar.collapsed {
+  width: 4.5rem;
+}
+
+.seller-sidebar.collapsed .sidebar-text,
+.seller-sidebar.collapsed .sidebar-title {
+  display: none;
+}
+
+/* Sidebar scrollbar */
+.seller-sidebar::-webkit-scrollbar {
+    width: 0.35rem;
+}
+
+.seller-sidebar::-webkit-scrollbar-thumb {
+    background-color: #D4AF37;
+    border-radius: 0.25rem;
+}
+
+/* ======================================================
+   MAIN LAYOUT
+====================================================== */
+
+.seller-main {
+  position: absolute;
+  top: 0;
+  left: 16rem;
+  width: calc(100vw - 16rem);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-width: 0;
+  transition: left 0.3s ease, width 0.3s ease;
+}
+
+.seller-main.collapsed {
+  left: 4.5rem;
+  width: calc(100vw - 4.5rem);
+}
+
+/* ======================================================
+   HEADER
+====================================================== */
+
+.seller-header {
+  height: 4.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 1rem;
+  background-color: #FFFFFF;
+  border-bottom: 1px solid #E5E7EB;
+  position: sticky;
+  top: 0;
+  padding-right: 30px;
+}
+
+.header-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+/* Profile */
+.header-profile {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.profile-avatar {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.profile-name {
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+/* ======================================================
+   CONTENT
+====================================================== */
+
+.seller-content {
+  flex: 1;
+  width: 100%;
+  padding: 1.5rem;
+  background-color: #F9FAFB;
+  overflow-y: auto;
+}
+
+/* ======================================================
+   RESPONSIVE
+====================================================== */
+
+/* Tablet */
+@media (max-width: 1024px) {
+  .seller-sidebar {
+    width: 15rem;
+  }
+
+  .seller-main {
+    left: 15rem;
+    width: calc(100vw - 15rem);
+  }
+
+  .header-title {
+    font-size: 1.3rem;
+  }
+
+}
+
+@media (min-width: 769px) {
+  .desktop-title {
+    display: block;
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+
+  .mobile-toggle,
+  .sidebar-icon,
+  .sidebar-toggle {
+    display: none;
+  }
+}
+
+/* Tablet / Mobile */
+@media (max-width: 768px) {
+  .desktop-title {
+    display: none;
+  }
+
+  .mobile-toggle {
+    display: flex;
+    justify-content: flex-start;
+    padding-left: 0.9rem;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .seller-sidebar {
+    width: 4.5rem;
+    padding: 1.5rem 0.5rem;
+    /* transition: none; */
+  }
+
+  .seller-sidebar.collapsed {
+    width: 16rem;
+  }
+
+  /* hide text when collapsed */
+  .seller-sidebar:not(.collapsed) .sidebar-text,
+  .sidebar-title,
+  .seller-sidebar.collapsed .sidebar-icon {
+    display: none;
+  }
+
+  .seller-sidebar.collapsed .sidebar-text,
+  .sidebar-header.expanded .mobile-title-text {
+    display: inline;
+  }
+
+  .mobile-title-text {
+    display: none;
+    font-weight: bold;
+    font-size: 1.2rem;
+    color: #D4AF37;
+  }
+
+  .seller-main {
+    left: 4.5rem;
+    width: calc(100vw - 4.5rem);
+  }
+
+  /* .seller-main.collapsed {
+    left: 16rem;
+    width: calc(100vw - 16rem);
+  } */
+
+  /* Toggle icon style */
+  .sidebar-header {
+    display: flex;
+    justify-content: left;
+    margin-bottom: 2rem;
+    padding-left: 0.9rem;
+  }
+
+  .sidebar-toggle {
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #D4AF37;
+  }
+
+  .seller-header {
+    padding: 0 0.75rem;
+  }
+
+  .header-title {
+    font-size: 1.1rem;
+  }
+
+  .seller-content {
+    padding: 1rem;
+  }
+}
+
+/* Extra Small */
+@media (max-width: 480px) {
+  .seller-header {
+    font-size: 1rem;
+  }
+
+  .header-right {
+    gap: 0.5rem;
+  }
+
+
+  .seller-sidebar {
+    height: 4.5rem;
+    width: 3rem;
+    padding: 1.5rem 0 1.5rem 0.2rem;
+    overflow: hidden;
+    transition: none;
+    border-bottom: 0.1rem solid #E5E7EB;
+  }
+
+  /* Hide everything except toggle */
+  .profile-name,
+  .seller-sidebar .nav,
+  .sidebar-title,
+  .sidebar-text,
+  .sidebar-icon {
+    display: none;
+  }
+
+  .seller-sidebar.mobile-mode.open {
+    width: 100%;
+    left: 0;
+    height: 100vh;
+    z-index: 2000;
+    padding: 1.5rem 0.5rem;
+  }
+
+  .seller-sidebar.mobile-mode.open .sidebar-text {
+    display: block;
+  }
+
+  .seller-sidebar:not(.open) {
+    background-color: white;
+  }
+
+  .seller-sidebar.mobile-mode.open .nav {
+    display: flex;
+  }
+
+  .seller-main {
+    left: 0 !important;
+    width: 100% !important;
+  }
+
+  .seller-header {
+    margin-left: 3rem;
+  }
+}

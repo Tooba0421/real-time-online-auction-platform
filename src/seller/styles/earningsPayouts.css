@@ -1,0 +1,8 @@
+/* Only for stats grid (auctionManagement doesn't include it) */
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 20px;
+  margin-bottom: 25px;
+}

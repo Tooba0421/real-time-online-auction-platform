@@ -1,0 +1,176 @@
+/* ================= ADMIN PAGE WRAPPER ================= */
+.admin-page {
+  padding: 0.5rem 1.5rem;
+  font-family: "Inter", sans-serif;
+  background: #f7f9fc;
+  border-radius: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+/* ================= ADMIN SECTION CARD ================= */
+.admin-section {
+  background: #ffffff;
+  border-radius: 0.6rem;
+  padding: 1.5rem;
+  box-shadow: 0 8px 20px rgba(17, 24, 39, 0.05);
+  margin-bottom: 2rem;
+}
+
+.admin-section-heading {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+/* ================= Stat CARD ================= */
+.stats-grid {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 2rem;
+  justify-content: flex-start;
+}
+
+/* ================= CONTROLS ================= */
+.admin-controls {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.admin-controls input,
+.admin-controls select {
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.5rem;
+  border: 1px solid #dee2e6;
+  font-size: 0.85rem;
+  background: #fff;
+  color: #111827;
+  outline: none;
+  transition: 0.2s;
+}
+
+.admin-controls input:focus,
+.admin-controls select:focus {
+  border: 1px solid #9b9b9b;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+}
+
+/* ================= TABLE WRAPPER ================= */
+.table-wrapper {
+  background: #ffffff;
+  border-radius: 0.75rem;
+  box-shadow: 0 0.3rem 1rem rgba(17, 24, 39, 0.08);
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+.table-wrapper::-webkit-scrollbar {
+  height: 0.35rem;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb {
+  background-color: #D4AF37;
+  border-radius: 0.3rem;
+}
+
+/* ================= TABLE ================= */
+.admin-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.admin-table thead {
+  background-color: #F9FAFB;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 0.8rem 1rem;
+  font-size: 0.85rem;
+  border-bottom: 0.05rem solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.admin-table th {
+  background: #f1f5f9;
+
+}
+
+.admin-table tbody tr:hover {
+  background-color: #F3F4F6;
+}
+
+/* ================= EMPTY STATE ================= */
+.no-data {
+  text-align: center;
+  padding: 1rem;
+  color: #6B7280;
+}
+
+/* ===== View Image Link ===== */
+.view-image-link {
+  color: #2563eb;
+  cursor: pointer;
+  font-weight: 500;
+  text-decoration: underline;
+}
+
+.view-image-link:hover {
+  color: #1e40af;
+}
+
+/* Charts */
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.chart-space {
+  max-width: 35rem;
+}
+
+/* Chart Box inside admin-section */
+
+.chart-box {
+  background: #ffffff;
+  border-radius: 1rem;
+  padding: 1rem;
+  box-shadow: 0 0.5rem 1.5rem rgba(17, 24, 39, 0.08);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  overflow: hidden;
+}
+
+.chart-box h4 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+/* Prevent overflow */
+
+.chart-container {
+  position: relative;
+  width: 100%;
+  height: 300px;
+}
+
+.chart-container canvas {
+  max-width: 100% !important;
+}
+
+.long-text {
+  display: inline-block;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
