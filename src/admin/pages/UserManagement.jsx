@@ -225,7 +225,6 @@ const initialUsers = [
                 <th>ID Verified</th>
                 <th>Status</th>
                 <th>Registration Date</th>
-                <th>Address</th>
               </tr>
             </thead>
 
@@ -269,11 +268,7 @@ const initialUsers = [
                     </td>
 
                     <td>{user.registrationDate}</td>
-                    <td>
-                      <span className="long-text" title={user.address}>
-                        {user.address}
-                      </span>
-                    </td>
+                   
                   </tr>
                 )))}
             </tbody>
