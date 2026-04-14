@@ -9,7 +9,7 @@ const CreateAuction = ({ onBack }) => {
         description: "",
         condition: "",
         material: "",
-        dimensions: "",
+        size: "",
         weight: "",
         startPrice: "",
         minIncrement: "",
@@ -170,10 +170,10 @@ const CreateAuction = ({ onBack }) => {
                         </div>
 
                         <div className="spec-field">
-                            <label>Dimensions</label>
+                            <label>Size</label>
                             <input className="form-input"
-                                name="dimensions"
-                                placeholder="HxWxD (cm)"
+                                name="size"
+                                placeholder="HxW (cm)"
                                 onChange={handleChange}
                             />
                         </div>
