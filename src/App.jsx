@@ -13,13 +13,14 @@ import AuctionRules from "./userFrontend/pages/AuctionRules";
 import BuyerProtection from "./userFrontend/pages/BuyerProtection";
 import SellerGuide from "./userFrontend/pages/SellerGuide";
 import BecomeSeller from "./userFrontend/pages/BecomeSeller";
-
+import { db } from "./firebase/firebase";
 
 function App() {
 
   useEffect(() => {
     window.history.scrollRestoration = "manual";
   }, []);
+  console.log(db);
 
   return (
     <BrowserRouter>
