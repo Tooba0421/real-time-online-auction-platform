@@ -13,6 +13,7 @@ import AuctionRules from "./userFrontend/pages/AuctionRules";
 import BuyerProtection from "./userFrontend/pages/BuyerProtection";
 import SellerGuide from "./userFrontend/pages/SellerGuide";
 import BecomeSeller from "./userFrontend/pages/BecomeSeller";
+import FAQ from "./userFrontend/pages/FAQ";
 import { db } from "./firebase/firebase";
 
 function App() {
@@ -56,6 +57,8 @@ function App() {
         <Route path="/seller-guide" element={<SellerGuide />} />
 
         <Route path="/become-seller" element={<BecomeSeller />} />
+
+        <Route path="/faq" element={<FAQ />} />
 
       </Routes>
     </BrowserRouter>

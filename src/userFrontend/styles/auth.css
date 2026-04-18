@@ -1,77 +1,205 @@
-.auth-overlay{
-  position:fixed;
-  top:0;
-  left:0;
-  width:100%;
-  height:100%;
-  background:rgba(0,0,0,0.5);
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  z-index:999;
+.auth-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 999;
+  color: var(--color-text-primary);
 }
 
-.auth-modal{
-  background:white;
-  width:380px;
-  padding:35px;
-  border-radius:10px;
-  position:relative;
-  text-align:center;
+.auth-modal {
+  background: white;
+  width: 90%;
+  max-width: 420px;
+  padding: 25px;
+  border-radius: 6px;
+  position: relative;
+  text-align: center;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
-.close-icon{
-  position:absolute;
-  top:15px;
-  right:15px;
-  cursor:pointer;
-  font-size:18px;
+.auth-modal::-webkit-scrollbar {
+  width: 0.35rem;
 }
 
-.auth-modal h2{
-  margin-bottom:25px;
+.auth-modal::-webkit-scrollbar-thumb {
+  background-color: var(--color-dark);
+  border-radius: 0.25rem;
 }
 
-.auth-form{
-  display:flex;
-  flex-direction:column;
-  gap:15px;
+.close-icon {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  cursor: pointer;
+  font-size: 18px;
 }
 
-.auth-input{
-  padding:12px;
-  border:1px solid var(--color-border);
+.auth-modal h2 {
+  margin-bottom: 25px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.auth-input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--color-border);
   background: transparent;
   color: var(--color-text-primary);
-  border-radius:6px;
+  border-radius: 6px;
   outline: none;
 }
 
 .auth-input:focus {
   border-color: var(--color-hover);
-
+  
 }
 
-.auth-btn{
+.auth-btn {
   background: var(--color-dark);
-  border:none;
-  padding:12px;
-  font-weight:600;
-  border-radius:6px;
-  cursor:pointer;
+  width: 100%;
+  border: none;
+  padding: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
 }
 
-.auth-btn:hover{
-  background:var(--color-dark-hover);
+.auth-btn:hover {
+  background: var(--color-dark-hover);
 }
 
-.switch-text{
-  margin-top:15px;
-  font-size:14px;
+.switch-text {
+  margin-top: 15px;
+  font-size: 14px;
 }
 
-.switch-text span{
-  color:var(--color-dark);
-  cursor:pointer;
-  font-weight:600;
+.switch-text span {
+  color: var(--color-dark);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* SELLER MODAL (ONLY affects seller form) */
+.seller-modal {
+  max-width: 720px;
+  width: 95%;
+  text-align: left;
+}
+
+/* Form spacing */
+.seller-form {
+  gap: 18px;
+}
+
+/* 2-column layout */
+.seller-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+.seller-row .auth-input {
+  flex: 1;
+}
+
+/* Textarea styling */
+.seller-form textarea {
+  resize: none;
+  min-height: 80px;
+}
+
+/* File upload styling */
+.file-box, .input-front {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.file-box label, .input-front label {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.file-box input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: #f9f9f9;
+}
+
+/* Button enhancement */
+.seller-btn {
+  margin-top: 10px;
+  padding: 14px;
+  font-size: 15px;
+}
+
+/* Responsive (important) */
+/* Tablets */
+@media (max-width: 1024px) {
+  .seller-modal {
+    max-width: 600px;
+  }
+}
+
+/* Small tablets */
+@media (max-width: 768px) {
+  .seller-row {
+    grid-template-columns: 1fr; /* stack inputs */
+  }
+
+  .seller-modal {
+    padding: 20px;
+    max-width: 500px;
+    max-height: 80vh;
+  }
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+  .auth-modal {
+    padding: 20px 24px;
+    max-width: 370px;
+    max-height: 70vh;
+  }
+  
+  .auth-input {
+    font-size: 13px;
+    padding: 10px;
+  }
+  
+  .auth-btn {
+    font-size: 14px;
+    padding: 12px;
+  }
+  
+  .close-icon {
+    font-size: 16px;
+  }
+}
+@media (max-width: 376px) {
+  .seller-modal {
+    padding: 20px;
+    max-width: 320px;
+  }
+}
+@media (max-width: 336px) {
+  .seller-modal {
+    padding: 20px;
+    max-width: 270px;
+  }
 }

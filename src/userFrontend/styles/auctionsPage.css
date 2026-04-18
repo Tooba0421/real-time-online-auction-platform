@@ -7,7 +7,7 @@
 /* GRID (CLEAN VERSION) */
 .auctions-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 25px;
 }
 
@@ -19,13 +19,13 @@
 }
 @media (max-width: 768px) {
   .auctions-page {
-    padding: 30px 20px;
+    padding: 30px 5vw;
   }
 }
 
 @media (max-width: 480px) {
   .auctions-page {
-    padding: 20px 15px;
+    padding: 20px 5vw;
   }
 }
 @media (max-width: 320px) {

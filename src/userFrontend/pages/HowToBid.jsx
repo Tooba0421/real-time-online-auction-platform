@@ -29,11 +29,11 @@ const HowToBid = () => {
       <div className="how-container">
 
         {/* HEADER */}
-        <div className="page-header">
-          <button className="back-btn" onClick={() => navigate(-1)}>
-            <FaArrowLeft />
-          </button>
-          <h2 className="page-heading">How Bidding Works</h2>
+        <div className="how-title">
+          <h1>How to Place a Bid</h1>
+          <p>
+            Follow simple steps to start bidding, win auctions, and secure your desired items easily.
+          </p>
         </div>
 
         {/* STEPS */}

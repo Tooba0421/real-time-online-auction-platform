@@ -1,4 +1,4 @@
-import { useLayoutEffect } from "react";
+import { useState, useLayoutEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
     FaArrowLeft,
@@ -12,12 +12,14 @@ import {
 
 import Header from "../components/Header";
 import Footer from "../components/Footer";
+import SellerFormModal from "../components/SellerRegistrationModal";
 import "../styles/common.css";
 import "../styles/infoPages.css";
 
 const BecomeSeller = () => {
 
     const navigate = useNavigate();
+    const [openSellerForm, setOpenSellerForm] = useState(false);
 
     useLayoutEffect(() => {
         window.scrollTo({ top: 0 });
@@ -28,14 +30,6 @@ const BecomeSeller = () => {
             <Header />
 
             <div className="info-container">
-
-                {/* HEADER */}
-                <div className="page-header">
-                    <button className="back-btn" onClick={() => navigate(-1)}>
-                        <FaArrowLeft />
-                    </button>
-                    <h2 className="page-heading">Become a Seller</h2>
-                </div>
 
                 {/* TITLE */}
                 <div className="how-title">
@@ -106,13 +100,17 @@ const BecomeSeller = () => {
 
                     <button
                         className="primary-btn"
-                        onClick={() => navigate("/?openLogin=true")}
+                        onClick={() => setOpenSellerForm(true)}
                     >
                         Get Started
                     </button>
                 </div>
 
             </div>
+
+            {openSellerForm && (
+  <SellerFormModal closeModal={() => setOpenSellerForm(false)} />
+)}
 
             <Footer />
         </>

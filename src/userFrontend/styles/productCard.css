@@ -2,7 +2,7 @@
 
 .product-card {
     width: 100%;
-    max-width: 380px;
+    /* max-width: 380px; */
     background: white;
     border-radius: 14px;
     overflow: hidden;

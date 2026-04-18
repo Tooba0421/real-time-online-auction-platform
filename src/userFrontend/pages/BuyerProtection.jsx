@@ -27,11 +27,11 @@ const BuyerProtection = () => {
 
       <div className="how-container">
 
-        <div className="page-header">
-          <button className="back-btn" onClick={() => navigate(-1)}>
-            <FaArrowLeft />
-          </button>
-          <h2 className="page-heading">Buyer Protection</h2>
+        <div className="how-title">
+          <h1>Safe & Secure Buying</h1>
+          <p>
+            We ensure secure payments, verified sellers, and full support for a safe shopping experience.
+          </p>
         </div>
 
         <div className="steps-container">

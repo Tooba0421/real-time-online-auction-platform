@@ -173,7 +173,7 @@ const Header = () => {
       <nav className={`navBar ${showMenu ? "active" : ""}`}>
         <span onClick={goToHome}>Home</span>
         <span className="dropdown-title">Category
-          <div className="dropdown-menu">
+          <div className="dropdown-category">
             <span onClick={() => goToCategory("Jewelry")}>Jewelry</span>
             <span onClick={() => goToCategory("Antiques")}>Antiques</span>
             <span onClick={() => goToCategory("Furniture")}>Furniture</span>

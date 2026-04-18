@@ -24,18 +24,20 @@ const initialPendingSellers = [
     name: "Sara Ahmed",
     email: "sara@email.com",
     businessName: "Sara Antiques",
+    city: "Multan",
     cnic: "42101-1234567-8",
     requestDate: "2026-01-18",
     statusType: "pending",
     cnicFront: frontSide,
     cnicBack: backSide,
-    address: "123 Main Street, Gulberg, Lahore, Pakistan"
+    address: "123 Main Street, Gulberg, Multan, Pakistan"
   },
   {
     id: "USR-103",
     name: "Hassan Raza",
     email: "hassan@email.com",
     businessName: "Vintage Hub",
+    city: "Lahore",
     cnic: "42101-9876543-2",
     requestDate: "2026-01-20",
     statusType: "pending",
@@ -242,6 +244,7 @@ const SellerManagement = () => {
                 <th>Seller</th>
                 <th>Email</th>
                 <th>Business</th>
+                <th>City</th>
                 <th>Address</th>
                 <th>View CNIC</th>
                 <th>Request Date</th>
@@ -257,6 +260,7 @@ const SellerManagement = () => {
                     <td>{seller.name}</td>
                     <td>{seller.email}</td>
                     <td>{seller.businessName}</td>
+                    <td>{seller.city}</td>
                     <td>
                       <span className="long-text" title={seller.address}>
                         {seller.address}

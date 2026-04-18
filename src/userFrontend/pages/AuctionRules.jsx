@@ -28,11 +28,12 @@ const AuctionRules = () => {
 
       <div className="how-container">
 
-        <div className="page-header">
-          <button className="back-btn" onClick={() => navigate(-1)}>
-            <FaArrowLeft />
-          </button>
-          <h2 className="page-heading">Auction Rules</h2>
+        {/* TITLE */}
+        <div className="how-title">
+          <h1>Auction Rules & Guidelines</h1>
+          <p>
+            Understand the rules that ensure fair, transparent, and trusted bidding for all users.
+          </p>
         </div>
 
         <div className="steps-container">

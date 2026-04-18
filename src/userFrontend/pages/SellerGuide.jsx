@@ -29,11 +29,11 @@ const SellerGuide = () => {
       <div className="info-container">
 
         {/* HEADER */}
-        <div className="page-header">
-          <button className="back-btn" onClick={() => navigate(-1)}>
-            <FaArrowLeft />
-          </button>
-          <h2 className="page-heading">Seller Guide</h2>
+        <div className="how-title">
+          <h1>Seller Guide</h1>
+          <p>
+            Learn how to list products, attract buyers, and successfully manage your auctions.
+          </p>
         </div>
 
         {/* GUIDE (ONLY CARDS) */}
