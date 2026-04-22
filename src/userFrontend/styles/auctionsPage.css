@@ -14,21 +14,24 @@
 /* OPTIONAL: better spacing on smaller screens */
 @media (max-width: 1024px) {
   .auctions-page {
-    padding: 30px 40px;
+    padding: 25px;
   }
 }
 @media (max-width: 768px) {
   .auctions-page {
-    padding: 30px 5vw;
+    padding: 20px 25px;
   }
 }
 
 @media (max-width: 480px) {
   .auctions-page {
-    padding: 20px 5vw;
+    padding: 20px;
   }
 }
-@media (max-width: 320px) {
+@media (max-width: 360px) {
+  .auctions-page {
+    padding: 15px 20px;
+  }
   .auctions-grid {
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   }

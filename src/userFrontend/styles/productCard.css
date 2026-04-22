@@ -1,8 +1,8 @@
 /* ================= CARD ================= */
 
 .product-card {
-    width: 100%;
-    /* max-width: 380px; */
+    flex: 0 0 320px;   /* ⭐ FIX: prevents shrinking */
+    max-width: 350px;
     background: white;
     border-radius: 14px;
     overflow: hidden;

@@ -1,6 +1,11 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { useRef, useLayoutEffect, useState } from "react";
 import { FaArrowLeft, FaArrowRight } from "react-icons/fa";
+import { auth, db } from "../../firebase/firebase";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import LoginModal from "../components/LoginModal";
+import SignupModal from "../components/SignupModal";
+import CnicModal from "../components/CnicModal";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import ProductCard from "../components/ProductCard";
@@ -22,38 +27,77 @@ const ProductDetailPage = () => {
   const [error, setError] = useState("");
   const [currentBid, setCurrentBid] = useState(product?.currentBid || 0);
 
-  const handleBid = () => {
+  const [showLogin, setShowLogin] = useState(false);
+  const [showSignup, setShowSignup] = useState(false);
+  const [showCnic, setShowCnic] = useState(false);
+
+  const handleBid = async () => {
+  try {
+    // 🔥 STEP 1: VALIDATE BID INPUT FIRST
     const bid = Number(bidAmount);
 
-    // Empty check
     if (!bidAmount || bidAmount.trim() === "") {
-      setError("Please enter a bid amount");
+      alert("Please enter a bid amount");
       return;
     }
 
-    // Invalid number check
     if (isNaN(bid) || bid <= 0) {
-      setError("Please enter a valid amount");
+      alert("Please enter a valid amount");
       return;
     }
 
-    // 🔥 MAIN VALIDATION
     if (bid <= currentBid) {
-      setError(`Bid must be greater than PKR ${currentBid.toLocaleString()}`);
+      alert(`Bid must be greater than PKR ${currentBid.toLocaleString()}`);
       return;
     }
 
-    // SUCCESS
-    setError("");
+    // 🔥 STEP 2: CHECK LOGIN
+    const user = auth.currentUser;
 
-    // ✅ Update bid dynamically
+    if (!user) {
+      setShowLogin(true);
+      return;
+    }
+
+    // 🔥 STEP 3: FETCH USER DATA (ONLY ONCE)
+    const q = query(collection(db, "users"), where("uid", "==", user.uid));
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) {
+      alert("User not found");
+      return;
+    }
+
+    const userData = snapshot.docs[0].data();
+
+    // 🔥 STEP 4: CNIC VERIFICATION CHECK
+    if (!userData.idVerified || userData.idVerified === "not_submitted") {
+      setShowCnic(true);
+      return;
+    }
+
+    if (userData.idVerified === "pending") {
+      alert("Your CNIC is under review.");
+      return;
+    }
+
+    if (userData.idVerified === "rejected") {
+      alert("Your CNIC was rejected. Please resubmit.");
+      setShowCnic(true);
+      return;
+    }
+
+    // 🔥 STEP 5: SUCCESS (PLACE BID)
     setCurrentBid(bid);
-
-    // Optional: clear input
     setBidAmount("");
 
     alert("Bid placed successfully!");
-  };
+
+  } catch (error) {
+    console.error("Bid Error:", error);
+    alert("Something went wrong. Please try again.");
+  }
+};
 
 
 
@@ -208,7 +252,6 @@ const ProductDetailPage = () => {
             <button
               className="place-bid-btn"
               onClick={handleBid}
-              disabled={!bidAmount || Number(bidAmount) <= currentBid}
             >
               Place Bid
             </button>
@@ -291,6 +334,30 @@ const ProductDetailPage = () => {
           </div>
         )}
       </div>
+
+      {showLogin && (
+        <LoginModal
+          closeModal={() => setShowLogin(false)}
+          openSignup={() => {
+            setShowLogin(false);
+            setShowSignup(true);
+          }}
+        />
+      )}
+
+      {showSignup && (
+        <SignupModal
+          closeModal={() => setShowSignup(false)}
+          openLogin={() => {
+            setShowSignup(false);
+            setShowLogin(true);
+          }}
+        />
+      )}
+
+      {showCnic && (
+        <CnicModal closeModal={() => setShowCnic(false)} />
+      )}
 
       <Footer />
     </>

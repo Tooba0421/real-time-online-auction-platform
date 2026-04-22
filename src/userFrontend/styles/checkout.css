@@ -1,6 +1,7 @@
 .checkout-page {
   background: #f8f9fb;
   padding: 40px 60px;
+  min-height: 100vh;
 }
 
 .checkout-title {
@@ -13,6 +14,7 @@
   display: grid;
   grid-template-columns: 2fr 1fr;
   gap: 30px;
+  align-items: start;
 }
 
 /* Cards */
@@ -114,11 +116,17 @@
   display: flex;
   gap: 15px;
   margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.order-product div {
+  flex: 1;
+  min-width: 200px;
 }
 
 .order-product img {
-  width: 60px;
-  height: 60px;
+  width: 30%;
+  height: 30%;
   object-fit: cover;
   border-radius: 6px;
 }
@@ -181,12 +189,130 @@
   margin-top:5px;
 }
 
-/* Responsive */
+/* =========================
+   RESPONSIVE DESIGN SYSTEM
+   ========================= */
 
-@media (max-width: 900px) {
+/* ===== LARGE LAPTOP (≤1200px) ===== */
+@media (max-width: 1200px) {
+  .checkout-page {
+    padding: 30px 30px;
+  }
+}
 
-  .checkout-grid {
-    grid-template-columns: 1fr;
+/* ===== TABLET (≤1024px) ===== */
+@media (max-width: 1024px) {
+
+  .checkout-page {
+    padding: 25px;
   }
 
+  
+  .order-summary {
+    position: static; /* remove sticky */
+  }
+}
+
+/* ===== MOBILE (≤768px) ===== */
+@media (max-width: 768px) {
+  
+  .checkout-page {
+    padding: 20px 25px;
+  }
+  .auction-win-banner{
+    margin: 0px 15px 25px;
+
+  }
+  
+  .checkout-grid {
+    padding: 0px 15px;
+    grid-template-columns: 1fr;
+    gap: 0px;
+  }
+  
+  .checkout-right {
+    order: -1; /* ⭐ summary on top (better UX) */
+  }
+  
+  .card {
+    padding: 18px;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr; /* ⭐ stack inputs */
+    gap: 15px;
+  }
+
+  .order-product {
+    gap: 30px;
+  }
+  
+  .summary-row {
+    font-size: 13px;
+  }
+  
+  .summary-row.total {
+    font-size: 15px;
+  }
+  
+  .place-order {
+    height: 42px;
+    font-size: 14px;
+  }
+}
+
+/* ===== SMALL MOBILE (≤480px) ===== */
+@media (max-width: 480px) {
+  
+  .checkout-page {
+    padding: 20px;
+  }
+  .auction-win-banner{
+    margin: 0 0 25px;
+  }
+
+  .checkout-grid{
+    padding: 0;
+  }
+  
+  .card {
+    padding: 15px;
+  }
+
+  .auction-win-banner {
+    font-size: 14px;
+  }
+
+  .auction-win-banner span {
+    font-size: 12px;
+  }
+
+  .form-group input {
+    height: 38px;
+    font-size: 13px;
+  }
+  
+  .place-order {
+    font-size: 13px;
+    height: 40px;
+  }
+}
+
+/* ===== EXTRA SMALL (≤360px) ===== */
+@media (max-width: 360px) {
+  .checkout-page {
+    padding: 15px 20px;
+  }
+
+  .product-name {
+    font-size: 13px;
+  }
+
+  .summary-row {
+    font-size: 12px;
+  }
+
+  .summary-row.total {
+    font-size: 14px;
+  }
 }

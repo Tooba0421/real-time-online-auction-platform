@@ -38,7 +38,7 @@ const notifications = [
         message: "Your order has been shipped",
         time: "Yesterday",
         productId: 4,
-        actionText: "Track Order"
+        actionText: null
     },
     {
         id: 5,

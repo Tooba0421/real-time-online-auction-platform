@@ -35,7 +35,12 @@ const SignupModal = ({ closeModal, openLogin }) => {
         name: name,
         email: user.email,
         role: "user",
-        createdAt: new Date()
+
+        // 🔥 ADD THIS
+        idVerified: "not_submitted",
+
+        status: "active",
+        joinDate: new Date()
       });
 
       console.log("User created:", user);

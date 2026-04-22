@@ -40,21 +40,24 @@
 
 @media (max-width: 1024px) {
   .category-page {
-    padding: 30px 40px;
+    padding: 25px;
   }
 }
 @media (max-width: 768px) {
   .category-page {
-    padding: 30px 5vw;
+    padding: 20px 25px;
   }
 }
 
 @media (max-width: 480px) {
   .category-page {
-    padding: 20px 5vw;
+    padding: 20px;
   }
 }
-@media (max-width: 320px) {
+@media (max-width: 360px) {
+  .category-page {
+    padding: 15px 20px;
+  }
   .category-grid {
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   }

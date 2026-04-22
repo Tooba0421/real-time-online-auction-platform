@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { FaArrowLeft } from "react-icons/fa";
 import { useFavorites } from "../components/FavoritesContext";
 import { products } from "../data/products";
 import "../styles/header.css";
@@ -22,19 +23,20 @@ const Header = () => {
   const [showSearch, setShowSearch] = useState(false);
 
   useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setShowFav(false);
+    const handleClickOutsideMenu = (e) => {
+      if (!e.target.closest(".navBar") && !e.target.closest(".menu-icon")) {
+        setShowMenu(false);
       }
     };
 
-
-    document.addEventListener("mousedown", handleClickOutside);
+    if (showMenu) {
+      document.addEventListener("mousedown", handleClickOutsideMenu);
+    }
 
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutsideMenu);
     };
-  }, []);
+  }, [showMenu]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -94,11 +96,6 @@ const Header = () => {
 
         <div className="header-actions">
           <div className="icons">
-
-            {/* <FaSearch
-              className="header-icon mobile-search-icon"
-              onClick={() => setShowSearch(!showSearch)}
-            /> */}
 
             <div className="fav-wrapper" ref={dropdownRef}>
               <FaHeart
@@ -169,9 +166,20 @@ const Header = () => {
 
       </header>
 
-      {/* NAV */}
+      {/* OVERLAY (click outside to close) */}
+      {showMenu && <div className="sidebar-overlay" onClick={() => setShowMenu(false)}></div>}
+
+      {/* NAV / SIDEBAR */}
       <nav className={`navBar ${showMenu ? "active" : ""}`}>
-        <span onClick={goToHome}>Home</span>
+
+        {/* SIDEBAR HEADER */}
+        <div className="sidebar-header">
+          <p className="back-btn" onClick={() => setShowMenu(false)}><FaArrowLeft /></p>
+          <h3>Menu</h3>
+        </div>
+
+        <span onClick={() => { goToHome(); setShowMenu(false); }}>Home</span>
+
         <span className="dropdown-title">Category
           <div className="dropdown-category">
             <span onClick={() => goToCategory("Jewelry")}>Jewelry</span>
@@ -187,10 +195,36 @@ const Header = () => {
             <span onClick={() => goToCategory("Luxury Watches")}>Luxury Watches</span>
           </div>
         </span>
-        <span onClick={() => navigate("/auctions")}>Auctions</span>
-        <span onClick={() => navigate("/how-to-bid")}>
-          How to Bid
-        </span>
+
+        {/* MOBILE CATEGORY DROPDOWN */}
+        <div className="mobile-category">
+          <span
+            className="dropdown-toggle"
+            onClick={() => setShowSearch(!showSearch)}
+          >
+            Category
+          </span>
+
+          {showSearch && (
+            <div className="mobile-dropdown ">
+              <span onClick={() => goToCategory("Jewelry")}>Jewelry</span>
+              <span onClick={() => goToCategory("Antiques")}>Antiques</span>
+              <span onClick={() => goToCategory("Furniture")}>Furniture</span>
+              <span onClick={() => goToCategory("Electronics")}>Electronics</span>
+              <span onClick={() => goToCategory("Interiors")}>Interiors</span>
+              <span onClick={() => goToCategory("Artwork")}>Artwork</span>
+              <span onClick={() => goToCategory("Music,Movies & Cameras")}>Music,Movies & Cameras</span>
+              <span onClick={() => goToCategory("Coins & Stamps")}>Coins & Stamps</span>
+              <span onClick={() => goToCategory("Fashion")}>Fashion</span>
+              <span onClick={() => goToCategory("Toys & Models")}>Toys & Models</span>
+              <span onClick={() => goToCategory("Luxury Watches")}>Luxury Watches</span>
+            </div>
+          )}
+        </div>
+
+        <span onClick={() => { navigate("/auctions"); setShowMenu(false); }}>Auctions</span>
+        <span onClick={() => { navigate("/how-to-bid"); setShowMenu(false); }}>How to Bid</span>
+
       </nav>
 
       {/* LOGIN MODAL */}
