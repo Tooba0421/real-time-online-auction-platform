@@ -2,8 +2,6 @@ import {
   FaTachometerAlt,
   FaGavel,
   FaTasks,
-  FaBoxOpen,
-  FaChartLine,
   FaMoneyBillWave,
   FaTruck,
   FaBars,
@@ -15,8 +13,6 @@ const sellerMenu = [
   { name: "Dashboard Overview", icon: <FaTachometerAlt /> },
   { name: "Live Auction Monitoring", icon: <FaGavel /> },
   { name: "Auction Management", icon: <FaTasks /> },
-  { name: "Listings & Inventory", icon: <FaBoxOpen /> },
-  { name: "Bidding & Buyer Insights", icon: <FaChartLine /> },
   { name: "Earnings & Payouts", icon: <FaMoneyBillWave /> },
   { name: "Orders & Delivery", icon: <FaTruck /> },
 ];

@@ -7,8 +7,6 @@ import SellerHome from "./SellerHome";
 import LiveAuctions from "./LiveAuctions";
 import AuctionManagement from "./AuctionManagement";
 import CreateAuction from "./CreateAuction";
-import ListingsInventory from "./ListingsInventory";
-import BuyerInsights from "./BuyerInsights";
 import EarningsPayouts from "./EarningsPayouts";
 import OrdersDelivery from "./OrdersDelivery";
 

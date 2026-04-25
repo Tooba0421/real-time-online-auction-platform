@@ -6,6 +6,7 @@ import Header from "../components/Header";
 import Home from "./Home";
 import UserManagement from "./UserManagement";
 import SellerManagement from "./SellerManagement";
+import BidderManagement from "./BidderManagement";
 import ProductManagement from "./ProductManagement";
 import AuctionsBidMonitoring from "./AuctionsBidMonitoring";
 import OrderDeliveryManagement from "./OrderDeliveryManagement";
@@ -50,6 +51,8 @@ const AdminDashboard = () => {
         return <UserManagement />;
       case "Seller Management":
         return <SellerManagement />;
+      case "Bidder Management":
+        return <BidderManagement />;
       case "Products & Listings":
         return <ProductManagement />;
       case "Auctions & Bid Monitoring":

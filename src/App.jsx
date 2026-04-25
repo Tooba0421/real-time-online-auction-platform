@@ -14,7 +14,9 @@ import BuyerProtection from "./userFrontend/pages/BuyerProtection";
 import SellerGuide from "./userFrontend/pages/SellerGuide";
 import BecomeSeller from "./userFrontend/pages/BecomeSeller";
 import FAQ from "./userFrontend/pages/FAQ";
+import SearchPage from "./userFrontend/pages/SearchPage";
 import { db } from "./firebase/firebase";
+
 
 function App() {
 
@@ -60,6 +62,7 @@ function App() {
 
         <Route path="/faq" element={<FAQ />} />
 
+        <Route path="/search" element={<SearchPage />} />
       </Routes>
     </BrowserRouter>
   );

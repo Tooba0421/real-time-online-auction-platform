@@ -8,7 +8,7 @@
 .auctions-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 25px;
+  gap: 20px;
 }
 
 /* OPTIONAL: better spacing on smaller screens */
