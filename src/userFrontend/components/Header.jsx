@@ -142,7 +142,8 @@ const Header = () => {
                 </div>
               )}
 
-            </div>
+            
+        </div>
 
             <FaBell className="header-icon" onClick={goToNotifications} />
           </div>

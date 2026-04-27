@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { FaTimes } from "react-icons/fa";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth, db } from "../../firebase/firebase";
-import { addDoc, collection } from "firebase/firestore";
+import { supabase } from "../../supabase";
 import "../styles/auth.css";
 
 const SignupModal = ({ closeModal, openLogin }) => {
@@ -11,6 +9,7 @@ const SignupModal = ({ closeModal, openLogin }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleSignup = async (e) => {
     e.preventDefault();
@@ -21,34 +20,33 @@ const SignupModal = ({ closeModal, openLogin }) => {
     }
 
     try {
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
+      setLoading(true);
 
-      const user = userCredential.user;
-
-      // 🔥 Save user in Firestore
-      await addDoc(collection(db, "users"), {
-        uid: user.uid,
-        name: name,
-        email: user.email,
-        role: "user",
-
-        // 🔥 ADD THIS
-        idVerified: "not_submitted",
-
-        status: "active",
-        joinDate: new Date()
+      // Step 1: Create user in Supabase Auth
+      const { data, error } = await supabase.auth.signUp({
+        email: email,
+        password: password,
+        options: {
+          data: {
+            name: name, // this goes to trigger → profiles table
+          }
+        }
       });
 
-      console.log("User created:", user);
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      console.log("User created successfully:", data.user);
+      alert("Account created successfully!");
       closeModal();
 
     } catch (error) {
       console.error(error.message);
       alert(error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -94,7 +92,9 @@ const SignupModal = ({ closeModal, openLogin }) => {
             onChange={(e) => setConfirmPassword(e.target.value)}
           />
 
-          <button className="auth-btn">Sign Up</button>
+          <button className="auth-btn" disabled={loading}>
+            {loading ? "Creating Account..." : "Sign Up"}
+          </button>
 
         </form>
 

@@ -3,66 +3,39 @@ import { useEffect } from "react";
 import AdminPortal from "./admin/AdminPortal";
 import SellerPortal from "./seller/SellerPortal";
 import UserPortal from "./userFrontend/UserPortal";
-import ProductDetailPage from "./userFrontend/pages/ProductDetailPage";
-import NotificationsPage from "./userFrontend/pages/NotificationsPage";
-import CheckoutPage from "./userFrontend/pages/CheckoutPage";
-import CategoryPage from "./userFrontend/pages/CategoryPage";
-import AuctionsPage from "./userFrontend/pages/AuctionsPage";
-import HowToBid from "./userFrontend/pages/HowToBid";
-import AuctionRules from "./userFrontend/pages/AuctionRules";
-import BuyerProtection from "./userFrontend/pages/BuyerProtection";
-import SellerGuide from "./userFrontend/pages/SellerGuide";
-import BecomeSeller from "./userFrontend/pages/BecomeSeller";
-import FAQ from "./userFrontend/pages/FAQ";
-import SearchPage from "./userFrontend/pages/SearchPage";
-import { db } from "./firebase/firebase";
-
+import { supabase } from "./supabase";
 
 function App() {
 
   useEffect(() => {
     window.history.scrollRestoration = "manual";
+
+    // Test Supabase connection
+    const testConnection = async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+
+      if (error) {
+        console.log('Supabase connection failed:', error)
+      } else {
+        console.log('Supabase connected successfully!', data)
+      }
+    }
+    testConnection()
   }, []);
-  console.log(db);
 
   return (
     <BrowserRouter>
       <Routes>
+        {/* User Portal */}
+        <Route path="/*" element={<UserPortal />} />
 
-        {/* User site */}
-        <Route path="/" element={<UserPortal />} />
+        {/* Admin Portal */}
+        <Route path="/admin/*" element={<AdminPortal />} />
 
-        {/* Product page */}
-        <Route path="/product/:id" element={<ProductDetailPage />} />
-
-        {/* Admin portal */}
-        <Route path="/admin" element={<AdminPortal />} />
-
-        {/* Seller portal */}
-        <Route path="/seller" element={<SellerPortal />} />
-
-        {/* Notification page */}
-        <Route path="/notifications" element={<NotificationsPage />} />
-
-        <Route path="/checkout" element={<CheckoutPage />} />
-
-        <Route path="/category/:category" element={<CategoryPage />} />
-
-        <Route path="/auctions" element={<AuctionsPage />} />
-
-        <Route path="/how-to-bid" element={<HowToBid />} />
-
-        <Route path="/auction-rules" element={<AuctionRules />} />
-
-        <Route path="/buyer-protection" element={<BuyerProtection />} />
-
-        <Route path="/seller-guide" element={<SellerGuide />} />
-
-        <Route path="/become-seller" element={<BecomeSeller />} />
-
-        <Route path="/faq" element={<FAQ />} />
-
-        <Route path="/search" element={<SearchPage />} />
+        {/* Seller Portal */}
+        <Route path="/seller/*" element={<SellerPortal />} />
       </Routes>
     </BrowserRouter>
   );

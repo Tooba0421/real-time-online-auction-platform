@@ -1,30 +1,38 @@
 import { useState } from "react";
 import { FaTimes } from "react-icons/fa";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../../firebase/firebase"; // adjust path
+import { supabase } from "../../supabase";
 import "../styles/auth.css";
 
 const LoginModal = ({ closeModal, openSignup }) => {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleLogin = async (e) => {
     e.preventDefault();
 
     try {
-      const userCredential = await signInWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
+      setLoading(true);
 
-      console.log("Logged in:", userCredential.user);
-      closeModal(); // close modal after login
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: password,
+      });
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      console.log("Logged in successfully:", data.user);
+      closeModal();
 
     } catch (error) {
       console.error(error.message);
       alert(error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -54,7 +62,9 @@ const LoginModal = ({ closeModal, openSignup }) => {
             onChange={(e) => setPassword(e.target.value)}
           />
 
-          <button className="auth-btn">Login</button>
+          <button className="auth-btn" disabled={loading}>
+            {loading ? "Logging in..." : "Login"}
+          </button>
 
         </form>
 
