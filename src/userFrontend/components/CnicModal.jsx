@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { FaTimes } from "react-icons/fa";
-import { auth, db, storage } from "../../firebase/firebase";
-import { collection, query, where, getDocs, updateDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { supabase } from "../../supabase/supabase";
 import "../styles/auth.css";
 
 const CnicModal = ({ closeModal }) => {
@@ -15,7 +13,8 @@ const CnicModal = ({ closeModal }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const user = auth.currentUser;
+    // Step 1: Get current logged in user
+    const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
       alert("User not logged in");
@@ -30,34 +29,96 @@ const CnicModal = ({ closeModal }) => {
     try {
       setLoading(true);
 
-      // 🔥 1. Upload FRONT image
-      const frontRef = ref(storage, `cnic/${user.uid}/front`);
-      await uploadBytes(frontRef, front);
-      const frontURL = await getDownloadURL(frontRef);
+      // Step 2: Upload CNIC front image to cnic-images bucket
+      const frontPath = `buyers/${user.id}/front`;
+      const { error: frontError } = await supabase.storage
+        .from('cnic-images')
+        .upload(frontPath, front, { upsert: true });
 
-      // 🔥 2. Upload BACK image
-      const backRef = ref(storage, `cnic/${user.uid}/back`);
-      await uploadBytes(backRef, back);
-      const backURL = await getDownloadURL(backRef);
-
-      // 🔥 3. Get user document
-      const q = query(collection(db, "users"), where("uid", "==", user.uid));
-      const snapshot = await getDocs(q);
-
-      if (snapshot.empty) {
-        alert("User not found");
+      if (frontError) {
+        alert("Error uploading front image");
+        console.error(frontError);
         return;
       }
 
-      const docRef = snapshot.docs[0].ref;
+      // Step 3: Upload CNIC back image to cnic-images bucket
+      const backPath = `buyers/${user.id}/back`;
+      const { error: backError } = await supabase.storage
+        .from('cnic-images')
+        .upload(backPath, back, { upsert: true });
 
-      // 🔥 4. Update Firestore
-      await updateDoc(docRef, {
-        cnicNumber: cnic,
-        cnicFront: frontURL,
-        cnicBack: backURL,
-        idVerified: "pending",
-      });
+      if (backError) {
+        alert("Error uploading back image");
+        console.error(backError);
+        return;
+      }
+
+      // Step 4: Get public URLs of uploaded images
+      const { data: frontURLData } = supabase.storage
+        .from('cnic-images')
+        .getPublicUrl(frontPath);
+
+      const { data: backURLData } = supabase.storage
+        .from('cnic-images')
+        .getPublicUrl(backPath);
+
+      const frontURL = frontURLData.publicUrl;
+      const backURL = backURLData.publicUrl;
+
+      // Step 5: Check if buyer record already exists
+      const { data: existingBuyer } = await supabase
+        .from('buyers')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (existingBuyer) {
+        // Step 6a: Update existing buyer record
+        const { error: updateError } = await supabase
+          .from('buyers')
+          .update({
+            cnic_number: cnic,
+            cnic_front: frontURL,
+            cnic_back: backURL,
+            is_verified: 'pending'
+          })
+          .eq('user_id', user.id);
+
+        if (updateError) {
+          alert("Error saving CNIC data");
+          console.error(updateError);
+          return;
+        }
+
+      } else {
+        // Step 6b: Create new buyer record
+        const { error: insertError } = await supabase
+          .from('buyers')
+          .insert({
+            user_id: user.id,
+            cnic_number: cnic,
+            cnic_front: frontURL,
+            cnic_back: backURL,
+            is_verified: 'pending'
+          });
+
+        if (insertError) {
+          alert("Error saving CNIC data");
+          console.error(insertError);
+          return;
+        }
+      }
+
+      // Step 7: Update id_verified in profiles table
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ id_verified: 'pending' })
+        .eq('id', user.id);
+
+      if (profileError) {
+        console.error(profileError);
+        return;
+      }
 
       alert("CNIC submitted! Waiting for admin approval.");
       closeModal();
@@ -89,14 +150,18 @@ const CnicModal = ({ closeModal }) => {
             onChange={(e) => setCnic(e.target.value)}
           />
 
+          <label>CNIC Front Image</label>
           <input
             type="file"
+            accept="image/*"
             required
             onChange={(e) => setFront(e.target.files[0])}
           />
 
+          <label>CNIC Back Image</label>
           <input
             type="file"
+            accept="image/*"
             required
             onChange={(e) => setBack(e.target.files[0])}
           />

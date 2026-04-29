@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import AdminPortal from "./admin/AdminPortal";
 import SellerPortal from "./seller/SellerPortal";
 import UserPortal from "./userFrontend/UserPortal";
-import { supabase } from "./supabase";
+import { supabase } from "./supabase/supabase";
 
 function App() {
 

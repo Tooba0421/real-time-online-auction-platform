@@ -1,8 +1,6 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { useRef, useLayoutEffect, useState } from "react";
 import { FaArrowLeft, FaArrowRight } from "react-icons/fa";
-import { auth, db } from "../../firebase/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
 import LoginModal from "../components/LoginModal";
 import SignupModal from "../components/SignupModal";
 import CnicModal from "../components/CnicModal";

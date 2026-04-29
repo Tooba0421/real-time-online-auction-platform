@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { FaTimes } from "react-icons/fa";
-import { supabase } from "../../supabase";
+import { supabase } from "../../supabase/supabase";
 import "../styles/auth.css";
 
 const SignupModal = ({ closeModal, openLogin }) => {
