@@ -3,7 +3,7 @@ import { FaTimes } from "react-icons/fa";
 import { supabase } from "../../supabase/supabase";
 import "../styles/auth.css";
 
-const LoginModal = ({ closeModal, openSignup }) => {
+const LoginModal = ({ closeModal, openSignup, openForgotPassword }) => {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -61,6 +61,11 @@ const LoginModal = ({ closeModal, openSignup }) => {
             required
             onChange={(e) => setPassword(e.target.value)}
           />
+
+          {/* Forgot Password — opens modal instead of navigating */}
+          <p className="forgot-password-text" onClick={openForgotPassword}>
+            Forgot Password?
+          </p>
 
           <button className="auth-btn" disabled={loading}>
             {loading ? "Logging in..." : "Login"}
