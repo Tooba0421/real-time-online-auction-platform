@@ -36,21 +36,21 @@ const UserPortal = () => {
 
       {/* Protected pages — only logged in users */}
       <Route path="/notifications" element={
-        <ProtectedRoute>
+        // <ProtectedRoute>
           <NotificationsPage />
-        </ProtectedRoute>
+        //  </ProtectedRoute>
       } />
 
       <Route path="/checkout" element={
-        <ProtectedRoute>
+        // <ProtectedRoute>
           <CheckoutPage />
-        </ProtectedRoute>
+        // </ProtectedRoute>
       } />
 
       <Route path="/profile" element={
-        <ProtectedRoute>
+        // <ProtectedRoute>
           <ProfilePage />
-        </ProtectedRoute>
+        // </ProtectedRoute>
       } />
 
     </Routes>

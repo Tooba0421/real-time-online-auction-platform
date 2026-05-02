@@ -1,35 +1,46 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { FaEdit, FaUser, FaEnvelope, FaIdCard, FaShieldAlt, FaSignOutAlt, FaCamera, FaTrash, FaTimes } from "react-icons/fa";
+import {
+  FaEdit, FaUser, FaEnvelope, FaIdCard,
+  FaShieldAlt, FaSignOutAlt, FaCamera, FaTrash, FaTimes
+} from "react-icons/fa";
 import { supabase } from "../../supabase/supabase";
+import { logout } from "../../supabase/authService";
+import { useAuthContext } from "../../context/AuthContext";
 import "../styles/profile.css";
 
 const ProfilePage = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef();
 
-  const [user, setUser] = useState(null);
+  // ✅ Use AuthContext instead of local state
+  const { user, profile: authProfile, loading: authLoading } = useAuthContext();
+
   const [profile, setProfile] = useState(null);
   const [buyer, setBuyer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [newName, setNewName] = useState("");
   const [saving, setSaving] = useState(false);
-
-  // Avatar popup state
   const [showAvatarPopup, setShowAvatarPopup] = useState(false);
   const [avatarLoading, setAvatarLoading] = useState(false);
 
   useEffect(() => {
+    // Wait for auth to load
+    if (authLoading) return;
+
+    // Not logged in → redirect
+    if (!user) {
+      navigate("/");
+      return;
+    }
+
     fetchUserData();
-  }, []);
+  }, [user, authLoading]);
 
   const fetchUserData = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { navigate("/"); return; }
-      setUser(user);
-
+      // ✅ Get profile from profiles table
       const { data: profileData } = await supabase
         .from("profiles")
         .select("*")
@@ -39,6 +50,7 @@ const ProfilePage = () => {
       setProfile(profileData);
       setNewName(profileData?.name || "");
 
+      // Get buyer record if exists
       const { data: buyerData } = await supabase
         .from("buyers")
         .select("*")
@@ -61,11 +73,11 @@ const ProfilePage = () => {
     try {
       setAvatarLoading(true);
 
+      // ✅ Store in auction-images bucket under avatars folder
       const filePath = `avatars/${user.id}/avatar`;
 
-      // Upload (upsert replaces previous image)
       const { error: uploadError } = await supabase.storage
-        .from("profile-images")
+        .from("auction-images")
         .upload(filePath, file, { upsert: true });
 
       if (uploadError) {
@@ -74,14 +86,12 @@ const ProfilePage = () => {
         return;
       }
 
-      // Get public URL
       const { data: urlData } = supabase.storage
-        .from("profile-images")
+        .from("auction-images")
         .getPublicUrl(filePath);
 
       const avatarUrl = urlData.publicUrl;
 
-      // Save URL to profiles table
       const { error: updateError } = await supabase
         .from("profiles")
         .update({ avatar_url: avatarUrl })
@@ -89,11 +99,9 @@ const ProfilePage = () => {
 
       if (updateError) {
         alert("Error saving avatar");
-        console.error(updateError);
         return;
       }
 
-      // Update local state
       setProfile((prev) => ({ ...prev, avatar_url: avatarUrl }));
       setShowAvatarPopup(false);
 
@@ -111,12 +119,10 @@ const ProfilePage = () => {
 
       const filePath = `avatars/${user.id}/avatar`;
 
-      // Delete from storage
       await supabase.storage
-        .from("profile-images")
+        .from("auction-images")
         .remove([filePath]);
 
-      // Set avatar_url to null in profiles
       const { error } = await supabase
         .from("profiles")
         .update({ avatar_url: null })
@@ -157,19 +163,22 @@ const ProfilePage = () => {
     }
   };
 
+  // ✅ Use authService logout
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await logout();
     navigate("/");
   };
 
+  // ✅ Fixed verification badge with correct enum values
   const getVerificationBadge = (status) => {
-    if (!status || status === "unverified") return { label: "Not Verified", cls: "badge-unverified" };
+    if (!status || status === "not_submitted") return { label: "Not Verified", cls: "badge-unverified" };
     if (status === "pending") return { label: "Pending Review", cls: "badge-pending" };
-    if (status === "verified") return { label: "Verified", cls: "badge-verified" };
+    if (status === "approved") return { label: "Verified", cls: "badge-verified" };
+    if (status === "rejected") return { label: "Rejected", cls: "badge-rejected" };
     return { label: status, cls: "badge-unverified" };
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="profile-loading">
         <div className="profile-spinner" />
@@ -207,7 +216,7 @@ const ProfilePage = () => {
           </div>
         </div>
 
-        {/* ── Avatar Popup ── */}
+        {/* Avatar Popup */}
         {showAvatarPopup && (
           <div className="avatar-popup-overlay" onClick={() => setShowAvatarPopup(false)}>
             <div className="avatar-popup" onClick={(e) => e.stopPropagation()}>
@@ -218,7 +227,6 @@ const ProfilePage = () => {
 
               <h3 className="avatar-popup-title">Profile Photo</h3>
 
-              {/* Preview circle */}
               <div className="avatar-popup-preview">
                 {profile?.avatar_url ? (
                   <img src={profile.avatar_url} alt="Preview" />
@@ -234,7 +242,6 @@ const ProfilePage = () => {
                 </div>
               ) : (
                 <div className="avatar-popup-actions">
-                  {/* Hidden file input */}
                   <input
                     type="file"
                     accept="image/*"
@@ -242,14 +249,12 @@ const ProfilePage = () => {
                     style={{ display: "none" }}
                     onChange={handleChangeImage}
                   />
-
                   <button
                     className="avatar-action-btn change-btn"
                     onClick={() => fileInputRef.current.click()}
                   >
                     <FaCamera /> Change Photo
                   </button>
-
                   {profile?.avatar_url && (
                     <button
                       className="avatar-action-btn remove-btn"
@@ -294,7 +299,10 @@ const ProfilePage = () => {
                     <button className="save-btn" onClick={handleSaveName} disabled={saving}>
                       {saving ? "Saving..." : "Save"}
                     </button>
-                    <button className="cancel-btn" onClick={() => { setEditMode(false); setNewName(profile?.name || ""); }}>
+                    <button className="cancel-btn" onClick={() => {
+                      setEditMode(false);
+                      setNewName(profile?.name || "");
+                    }}>
                       Cancel
                     </button>
                   </div>
@@ -385,129 +393,3 @@ const ProfilePage = () => {
 };
 
 export default ProfilePage;
-
-
-// import { useNavigate } from "react-router-dom";
-// import { FaEdit, FaUser, FaEnvelope, FaIdCard, FaShieldAlt, FaSignOutAlt, FaCamera } from "react-icons/fa";
-
-// import frontSide from "../../assets/frontSide.jpeg";
-// import backSide from "../../assets/backSide.jpeg";
-// import "../styles/profile.css";
-
-// const ProfilePage = () => {
-//   const navigate = useNavigate();
-
-//   // Static test data
-//   const profile = {
-//     name: "Ahmed Raza",
-//     email: "ahmed.raza@gmail.com",
-//     cnic_number: "42101-1234567-8",
-//     cnic_front: frontSide,
-//     cnic_back: backSide,
-//     id_verified: "verified",
-//   };
-
-//   return (
-//     <div className="profile-page">
-//       <div className="profile-bg-top" />
-
-//       <div className="profile-container">
-
-//         {/* Avatar Section */}
-//         <div className="profile-avatar-section">
-//           <div className="profile-avatar">
-//             <FaUser className="avatar-icon" />
-//             <div className="avatar-camera-btn">
-//               <FaCamera />
-//             </div>
-//           </div>
-//           <div className="profile-name-block">
-//             <h2 className="profile-display-name">{profile.name}</h2>
-//             <span className="profile-badge badge-verified">
-//               <FaShieldAlt /> Verified
-//             </span>
-//           </div>
-//         </div>
-
-//         <div className="profile-cards">
-
-//           {/* Personal Info Card */}
-//           <div className="profile-card">
-//             <div className="profile-card-header">
-//               <h3>Personal Information</h3>
-//               <button className="edit-btn">
-//                 <FaEdit /> Edit
-//               </button>
-//             </div>
-
-//             <div className="profile-field">
-//               <div className="field-icon"><FaUser /></div>
-//               <div className="field-content">
-//                 <label>Full Name</label>
-//                 <span>{profile.name}</span>
-//               </div>
-//             </div>
-
-//             <div className="profile-field">
-//               <div className="field-icon"><FaEnvelope /></div>
-//               <div className="field-content">
-//                 <label>Email Address</label>
-//                 <span>{profile.email}</span>
-//               </div>
-//             </div>
-
-//             <div className="profile-field">
-//               <div className="field-icon"><FaShieldAlt /></div>
-//               <div className="field-content">
-//                 <label>Verification Status</label>
-//                 <span className="inline-badge badge-verified">Verified</span>
-//               </div>
-//             </div>
-//           </div>
-
-//           {/* CNIC Card */}
-//           <div className="profile-card">
-//             <div className="profile-card-header">
-//               <h3>Identity Verification</h3>
-//               <span className="profile-badge badge-verified">
-//                 <FaShieldAlt /> Verified
-//               </span>
-//             </div>
-
-//             <div className="profile-field">
-//               <div className="field-icon"><FaIdCard /></div>
-//               <div className="field-content">
-//                 <label>CNIC Number</label>
-//                 <span className="cnic-number">{profile.cnic_number}</span>
-//               </div>
-//             </div>
-
-//             <div className="cnic-images-section">
-//               <div className="cnic-image-block">
-//                 <label>Front Side</label>
-//                 <div className="cnic-img-wrapper">
-//                   <img src={profile.cnic_front} alt="CNIC Front" className="cnic-img" />
-//                 </div>
-//               </div>
-//               <div className="cnic-image-block">
-//                 <label>Back Side</label>
-//                 <div className="cnic-img-wrapper">
-//                   <img src={profile.cnic_back} alt="CNIC Back" className="cnic-img" />
-//                 </div>
-//               </div>
-//             </div>
-//           </div>
-
-//         </div>
-
-//         {/* Logout */}
-//         <button className="logout-btn" onClick={() => navigate("/")}>
-//           <FaSignOutAlt /> Sign Out
-//         </button>
-
-//       </div>
-//     </div>
-//   );
-// };
-
-// export default ProfilePage;

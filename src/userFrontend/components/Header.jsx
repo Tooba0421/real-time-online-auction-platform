@@ -6,52 +6,26 @@ import { products } from "../data/products";
 import "../styles/header.css";
 import LoginModal from "./LoginModal";
 import SignupModal from "./SignupModal";
-import { FaBell, FaHeart, FaSearch, FaBars, FaUserCircle } from "react-icons/fa";
-import { supabase } from "../../supabase/supabase";
-// Add these imports
 import ForgotPasswordModal from "./ForgotPasswordModal";
-import ResetPasswordModal from "./ResetPasswordModal";
-
-
-// Update handleForgotPassword in LoginModal — pass prop instead:
-// In your LoginModal, change onClick to call openForgotPassword prop
+import { FaBell, FaHeart, FaSearch, FaBars } from "react-icons/fa";
+import { useAuthContext } from "../../context/AuthContext";
 
 const Header = () => {
 
   const navigate = useNavigate();
   const dropdownRef = useRef();
-  const favDropdownRef = useRef();
 
   const [showLogin, setShowLogin] = useState(false);
   const [showSignup, setShowSignup] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const { favorites, toggleFavorite } = useFavorites();
   const [showFav, setShowFav] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
 
-  // Add these states
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [showResetPassword, setShowResetPassword] = useState(false);
-  // Auth state
-  const [authUser, setAuthUser] = useState(null);
-  const [authChecked, setAuthChecked] = useState(false);
-
-  // Listen to Supabase auth changes
-  useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setAuthUser(session?.user ?? null);
-      setAuthChecked(true);
-    });
-
-    // Subscribe to auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAuthUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+  // ✅ Use AuthContext instead of local auth state
+  const { user, profile, loading } = useAuthContext();
 
   useEffect(() => {
     const handleClickOutsideMenu = (e) => {
@@ -59,11 +33,9 @@ const Header = () => {
         setShowMenu(false);
       }
     };
-
     if (showMenu) {
       document.addEventListener("mousedown", handleClickOutsideMenu);
     }
-
     return () => {
       document.removeEventListener("mousedown", handleClickOutsideMenu);
     };
@@ -79,39 +51,25 @@ const Header = () => {
   const goToNotifications = () => navigate("/notifications");
   const goToCategory = (category) => navigate(`/category/${encodeURIComponent(category)}`);
 
-  // Profile icon click logic:
-  // - Not signed up / no account → open Signup modal
-  // - Has account but not logged in → open Login modal
-  // - Logged in → go to profile page
-  const handleProfileClick = async () => {
-    if (!authChecked) return; // wait for auth check
-
-    if (authUser) {
-      // Logged in → go to profile
+  const handleProfileClick = () => {
+    if (loading) return;
+    if (user) {
       navigate("/profile");
       setShowMenu(false);
     } else {
-      // Check if there's a stored session hint (not logged in but had account)
-      // For simplicity: if no user at all, show signup. 
-      // If you want "was signed up but logged out" → show login instead:
-      // We'll open Login by default when not logged in (they can switch to signup from there).
       setShowLogin(true);
     }
   };
-
 
   return (
     <>
       <header className="main-header">
 
         <div className="header-left">
-          {/* Hamburger (Mobile Only) */}
           <FaBars
             className="menu-icon"
             onClick={() => setShowMenu(!showMenu)}
           />
-
-          {/* Logo */}
           <div className="logo" onClick={goToHome}>
             <img
               src="https://i.pravatar.cc/40?img=12"
@@ -140,7 +98,6 @@ const Header = () => {
                 className="header-icon"
                 onClick={() => setShowFav(!showFav)}
               />
-
               {showFav && (
                 <div className="fav-dropdown">
                   {favorites.length > 0 ? (
@@ -177,12 +134,11 @@ const Header = () => {
 
             <FaBell className="header-icon" onClick={goToNotifications} />
 
-            {/* ── Profile Icon ── */}
+            {/* Profile Icon */}
             <div className="profile-icon-wrapper" onClick={handleProfileClick} title="Profile">
-              {authUser ? (
+              {user ? (
                 <div className="profile-icon-avatar">
-                  {/* Show first letter of email or name as avatar */}
-                  {authUser.email?.charAt(0).toUpperCase()}
+                  {profile?.name?.charAt(0).toUpperCase() || user.email?.charAt(0).toUpperCase()}
                 </div>
               ) : (
                 <FaUser className="header-icon profile-icon" />
@@ -191,19 +147,23 @@ const Header = () => {
 
           </div>
 
-          <button
-            className="header-btn"
-            onClick={() => setShowLogin(true)}
-          >
-            Login
-          </button>
-
-          <button
-            className="signup-btn"
-            onClick={() => setShowSignup(true)}
-          >
-            Sign Up
-          </button>
+          {/* Show Login/Signup buttons only when not logged in */}
+          {!user && (
+            <>
+              <button
+                className="header-btn"
+                onClick={() => setShowLogin(true)}
+              >
+                Login
+              </button>
+              <button
+                className="signup-btn"
+                onClick={() => setShowSignup(true)}
+              >
+                Sign Up
+              </button>
+            </>
+          )}
 
         </div>
 
@@ -214,14 +174,11 @@ const Header = () => {
 
       {/* NAV / SIDEBAR */}
       <nav className={`navBar ${showMenu ? "active" : ""}`}>
-
         <div className="sidebar-header">
           <p className="back-btn" onClick={() => setShowMenu(false)}><FaArrowLeft /></p>
           <h3>Menu</h3>
         </div>
-
         <span onClick={() => { goToHome(); setShowMenu(false); }}>Home</span>
-
         <span className="dropdown-title">Category
           <div className="dropdown-category">
             <span onClick={() => goToCategory("Jewelry")}>Jewelry</span>
@@ -237,7 +194,6 @@ const Header = () => {
             <span onClick={() => goToCategory("Luxury Watches")}>Luxury Watches</span>
           </div>
         </span>
-
         <div className="mobile-category">
           <span
             className="dropdown-toggle"
@@ -245,7 +201,6 @@ const Header = () => {
           >
             Category
           </span>
-
           {showSearch && (
             <div className="mobile-dropdown">
               <span onClick={() => goToCategory("Jewelry")}>Jewelry</span>
@@ -262,10 +217,8 @@ const Header = () => {
             </div>
           )}
         </div>
-
         <span onClick={() => { navigate("/auctions"); setShowMenu(false); }}>Auctions</span>
         <span onClick={() => { navigate("/how-to-bid"); setShowMenu(false); }}>How to Bid</span>
-
       </nav>
 
       {/* LOGIN MODAL */}
@@ -302,13 +255,6 @@ const Header = () => {
             setShowForgotPassword(false);
             setShowLogin(true);
           }}
-        />
-      )}
-
-      {/* RESET PASSWORD MODAL */}
-      {showResetPassword && (
-        <ResetPasswordModal
-          closeModal={() => setShowResetPassword(false)}
         />
       )}
     </>
