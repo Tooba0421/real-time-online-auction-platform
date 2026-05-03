@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FaTimes } from "react-icons/fa";
 import { supabase } from "../../supabase/supabase";
+import toast from "react-hot-toast";
 import "../styles/auth.css";
 
 const LoginModal = ({ closeModal, openSignup, openForgotPassword }) => {
@@ -21,16 +22,17 @@ const LoginModal = ({ closeModal, openSignup, openForgotPassword }) => {
       });
 
       if (error) {
-        alert(error.message);
+        toast.error(error.message);
         return;
       }
 
       console.log("Logged in successfully:", data.user);
+      toast.success("Logged in successfully!");
       closeModal();
 
     } catch (error) {
       console.error(error.message);
-      alert(error.message);
+      toast.error(error.message);
     } finally {
       setLoading(false);
     }
@@ -62,7 +64,6 @@ const LoginModal = ({ closeModal, openSignup, openForgotPassword }) => {
             onChange={(e) => setPassword(e.target.value)}
           />
 
-          {/* Forgot Password — opens modal instead of navigating */}
           <p className="forgot-password-text" onClick={openForgotPassword}>
             Forgot Password?
           </p>

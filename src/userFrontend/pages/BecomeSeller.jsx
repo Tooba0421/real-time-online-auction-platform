@@ -1,7 +1,6 @@
 import { useState, useLayoutEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-    FaArrowLeft,
     FaUsers,
     FaShieldAlt,
     FaChartLine,
@@ -9,10 +8,11 @@ import {
     FaBolt,
     FaHandshake
 } from "react-icons/fa";
-
+import toast from "react-hot-toast";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import SellerFormModal from "../components/SellerRegistrationModal";
+import { useAuthContext } from "../../context/AuthContext";
 import "../styles/common.css";
 import "../styles/infoPages.css";
 
@@ -20,10 +20,37 @@ const BecomeSeller = () => {
 
     const navigate = useNavigate();
     const [openSellerForm, setOpenSellerForm] = useState(false);
+    const { user, profile } = useAuthContext();
 
     useLayoutEffect(() => {
         window.scrollTo({ top: 0 });
     }, []);
+
+    const handleGetStarted = () => {
+
+        // Not logged in
+        if (!user) {
+            toast.error("Please login first to become a seller!");
+            return;
+        }
+
+        // Already a seller
+        if (profile?.role === 'seller') {
+            toast.success("You are already registered as a seller!");
+            return;
+        }
+
+        // Already submitted but pending
+        if (profile?.role === 'user' && profile?.id_verified === 'pending') {
+            toast("Your seller application is already under review. Please wait for admin approval.", {
+                icon: '⏳',
+            });
+            return;
+        }
+
+        // All good → open seller form
+        setOpenSellerForm(true);
+    };
 
     return (
         <>
@@ -39,7 +66,7 @@ const BecomeSeller = () => {
                     </p>
                 </div>
 
-                {/* BENEFITS (USING STEP CARDS) */}
+                {/* BENEFITS */}
                 <div className="steps-container">
 
                     <div className="step-card">
@@ -54,7 +81,7 @@ const BecomeSeller = () => {
                         <FaGavel className="step-icon" />
                         <h3>Real-Time Bidding</h3>
                         <p>
-                            Let competitive bidding increase your product’s value and ensure fair market pricing.
+                            Let competitive bidding increase your product's value and ensure fair market pricing.
                         </p>
                     </div>
 
@@ -81,6 +108,7 @@ const BecomeSeller = () => {
                             List your items quickly with a simple process and start receiving bids in no time.
                         </p>
                     </div>
+
                     <div className="step-card">
                         <FaHandshake className="step-icon" />
                         <h3>Trusted Local Marketplace</h3>
@@ -100,17 +128,23 @@ const BecomeSeller = () => {
 
                     <button
                         className="primary-btn"
-                        onClick={() => setOpenSellerForm(true)}
+                        onClick={handleGetStarted}
                     >
-                        Get Started
+                        {!user
+                            ? "Login to Get Started"
+                            : profile?.role === 'seller'
+                                ? "Already a Seller ✅"
+                                : "Get Started"
+                        }
                     </button>
+
                 </div>
 
             </div>
 
             {openSellerForm && (
-  <SellerFormModal closeModal={() => setOpenSellerForm(false)} />
-)}
+                <SellerFormModal closeModal={() => setOpenSellerForm(false)} />
+            )}
 
             <Footer />
         </>

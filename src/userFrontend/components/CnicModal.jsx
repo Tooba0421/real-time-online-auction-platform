@@ -1,9 +1,13 @@
 import { useState } from "react";
 import { FaTimes } from "react-icons/fa";
 import { supabase } from "../../supabase/supabase";
+import { useAuthContext } from "../../context/AuthContext";
+import toast from "react-hot-toast";
 import "../styles/auth.css";
 
 const CnicModal = ({ closeModal }) => {
+
+  const { user } = useAuthContext();
 
   const [cnic, setCnic] = useState("");
   const [front, setFront] = useState(null);
@@ -13,47 +17,44 @@ const CnicModal = ({ closeModal }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Step 1: Get current logged in user
-    const { data: { user } } = await supabase.auth.getUser();
-
     if (!user) {
-      alert("User not logged in");
+      toast.error("User not logged in");
       return;
     }
 
     if (!front || !back) {
-      alert("Please upload both CNIC images");
+      toast.error("Please upload both CNIC images");
       return;
     }
 
     try {
       setLoading(true);
 
-      // Step 2: Upload CNIC front image to cnic-images bucket
+      // Step 1: Upload CNIC front image
       const frontPath = `buyers/${user.id}/front`;
       const { error: frontError } = await supabase.storage
         .from('cnic-images')
         .upload(frontPath, front, { upsert: true });
 
       if (frontError) {
-        alert("Error uploading front image");
+        toast.error("Error uploading front image");
         console.error(frontError);
         return;
       }
 
-      // Step 3: Upload CNIC back image to cnic-images bucket
+      // Step 2: Upload CNIC back image
       const backPath = `buyers/${user.id}/back`;
       const { error: backError } = await supabase.storage
         .from('cnic-images')
         .upload(backPath, back, { upsert: true });
 
       if (backError) {
-        alert("Error uploading back image");
+        toast.error("Error uploading back image");
         console.error(backError);
         return;
       }
 
-      // Step 4: Get public URLs of uploaded images
+      // Step 3: Get public URLs
       const { data: frontURLData } = supabase.storage
         .from('cnic-images')
         .getPublicUrl(frontPath);
@@ -65,7 +66,7 @@ const CnicModal = ({ closeModal }) => {
       const frontURL = frontURLData.publicUrl;
       const backURL = backURLData.publicUrl;
 
-      // Step 5: Check if buyer record already exists
+      // Step 4: Check if buyer record already exists
       const { data: existingBuyer } = await supabase
         .from('buyers')
         .select('id')
@@ -73,7 +74,7 @@ const CnicModal = ({ closeModal }) => {
         .single();
 
       if (existingBuyer) {
-        // Step 6a: Update existing buyer record
+        // Update existing buyer record
         const { error: updateError } = await supabase
           .from('buyers')
           .update({
@@ -85,13 +86,13 @@ const CnicModal = ({ closeModal }) => {
           .eq('user_id', user.id);
 
         if (updateError) {
-          alert("Error saving CNIC data");
+          toast.error("Error saving CNIC data");
           console.error(updateError);
           return;
         }
 
       } else {
-        // Step 6b: Create new buyer record
+        // Create new buyer record
         const { error: insertError } = await supabase
           .from('buyers')
           .insert({
@@ -103,29 +104,50 @@ const CnicModal = ({ closeModal }) => {
           });
 
         if (insertError) {
-          alert("Error saving CNIC data");
+          toast.error("Error saving CNIC data");
           console.error(insertError);
           return;
         }
       }
 
-      // Step 7: Update id_verified in profiles table
+      // Step 5: Update id_verified in profiles table
       const { error: profileError } = await supabase
         .from('profiles')
         .update({ id_verified: 'pending' })
         .eq('id', user.id);
 
       if (profileError) {
+        toast.error("Error updating profile");
         console.error(profileError);
         return;
       }
 
-      alert("CNIC submitted! Waiting for admin approval.");
+      // Step 6: Notify admin
+      const { data: adminData } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('role', 'admin')
+        .single();
+
+      if (adminData) {
+        await supabase
+          .from('notifications')
+          .insert({
+            user_id: adminData.id,
+            title: 'New CNIC Verification Request',
+            message: `A buyer has submitted their CNIC for verification.`,
+            type: 'approval',
+            notification_for: 'admin',
+            is_read: false
+          });
+      }
+
+      toast.success("CNIC submitted! Waiting for admin approval.");
       closeModal();
 
     } catch (err) {
       console.error(err);
-      alert("Error submitting CNIC");
+      toast.error("Error submitting CNIC");
     } finally {
       setLoading(false);
     }

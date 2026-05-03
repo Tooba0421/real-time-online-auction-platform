@@ -198,7 +198,7 @@ const ProfilePage = () => {
 
         {/* Avatar Section */}
         <div className="profile-avatar-section">
-          <div className="profile-avatar" onClick={() => setShowAvatarPopup(true)}>
+          <div className="user-profile-avatar" onClick={() => setShowAvatarPopup(true)}>
             {profile?.avatar_url ? (
               <img src={profile.avatar_url} alt="Profile" className="avatar-img" />
             ) : (

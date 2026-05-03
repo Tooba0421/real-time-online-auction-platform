@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FaTimes } from "react-icons/fa";
 import { supabase } from "../../supabase/supabase";
+import toast from "react-hot-toast";
 import "../styles/auth.css";
 
 const SignupModal = ({ closeModal, openLogin }) => {
@@ -15,36 +16,40 @@ const SignupModal = ({ closeModal, openLogin }) => {
     e.preventDefault();
 
     if (password !== confirmPassword) {
-      alert("Passwords do not match");
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    if (password.length < 6) {
+      toast.error("Password must be at least 6 characters");
       return;
     }
 
     try {
       setLoading(true);
 
-      // Step 1: Create user in Supabase Auth
       const { data, error } = await supabase.auth.signUp({
         email: email,
         password: password,
         options: {
           data: {
-            name: name, // this goes to trigger → profiles table
+            name: name,
           }
         }
       });
 
       if (error) {
-        alert(error.message);
+        toast.error(error.message);
         return;
       }
 
       console.log("User created successfully:", data.user);
-      alert("Account created successfully!");
+      toast.success("Account created successfully!");
       closeModal();
 
     } catch (error) {
       console.error(error.message);
-      alert(error.message);
+      toast.error(error.message);
     } finally {
       setLoading(false);
     }
@@ -79,7 +84,7 @@ const SignupModal = ({ closeModal, openLogin }) => {
           <input
             className="auth-input"
             type="password"
-            placeholder="Password"
+            placeholder="Password (min 6 characters)"
             required
             onChange={(e) => setPassword(e.target.value)}
           />

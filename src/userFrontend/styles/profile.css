@@ -65,7 +65,7 @@
   flex-wrap: wrap;
 }
 
-.profile-avatar {
+.user-profile-avatar {
   position: relative;
   width: 110px;
   height: 110px;
@@ -123,7 +123,7 @@
 }
 
 /* ── Avatar Image (when set) ── */
-.profile-avatar .avatar-img {
+.user-profile-avatar .avatar-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
