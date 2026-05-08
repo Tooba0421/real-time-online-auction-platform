@@ -171,7 +171,7 @@ const CheckoutPage = () => {
 
                 <h3>Shipping Address</h3>
 
-                <div className="form-grid">
+                <div className="checkout-form-grid">
 
                   <div className="form-group">
                     <label>
@@ -210,7 +210,7 @@ const CheckoutPage = () => {
                   <input type="text" required />
                 </div>
 
-                <div className="form-grid">
+                <div className="checkout-form-grid">
 
                   <div className="form-group">
                     <label>

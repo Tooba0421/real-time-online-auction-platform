@@ -4,7 +4,6 @@ import { supabase } from "../../supabase/supabase";
 import { useAuthContext } from "../../context/AuthContext";
 import toast from "react-hot-toast";
 import "../styles/auth.css";
-import "../styles/cnic.css";
 
 const CnicModal = ({ closeModal }) => {
   const { user } = useAuthContext();
@@ -24,7 +23,6 @@ const CnicModal = ({ closeModal }) => {
     else { setBack(file); setBackPreview(preview); }
   };
 
-  // Auto-format CNIC: 42101-1234567-8
   const handleCnicChange = (e) => {
     let val = e.target.value.replace(/[^0-9]/g, "");
     if (val.length > 5 && val.length <= 12) val = val.slice(0, 5) + "-" + val.slice(5);
@@ -34,7 +32,6 @@ const CnicModal = ({ closeModal }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     if (!user) { toast.error("User not logged in"); return; }
     if (!front || !back) { toast.error("Please upload both CNIC images"); return; }
 
@@ -102,26 +99,24 @@ const CnicModal = ({ closeModal }) => {
 
   return (
     <div className="auth-overlay">
-      <div className="auth-modal cnic-modal">
+      <div className="auth-modal form-modal">
 
         <FaTimes className="close-icon" onClick={closeModal} />
 
-        {/* Header */}
-        <div className="cnic-modal-header">
-          <div className="cnic-modal-icon">
+        <div className="form-modal-header">
+          <div className="form-modal-icon">
             <FaIdCard />
           </div>
           <h2>CNIC Verification</h2>
-          <p className="cnic-modal-subtitle">
+          <p className="form-modal-subtitle">
             Submit your identity documents to unlock bidding features
           </p>
         </div>
 
-        <form className="auth-form cnic-form" onSubmit={handleSubmit}>
+        <form className="auth-form form-grid" onSubmit={handleSubmit}>
 
-          {/* CNIC Number */}
-          <div className="cnic-input-group">
-            <label className="cnic-label">CNIC Number</label>
+          <div className="form-field">
+            <label className="form-label">CNIC Number</label>
             <input
               className="auth-input cnic-number-input"
               type="text"
@@ -133,82 +128,66 @@ const CnicModal = ({ closeModal }) => {
             />
           </div>
 
-          {/* Upload Row */}
-          <div className="cnic-upload-row">
+          <div className="form-upload-row">
 
-            {/* Front */}
-            <div className="cnic-upload-box">
-              <label className="cnic-label">Front Side</label>
-              <label className="cnic-upload-area" htmlFor="cnic-front">
+            <div className="form-upload-box">
+              <label className="form-label">Front Side</label>
+              <label className="form-upload-area" htmlFor="cnic-front">
                 {frontPreview ? (
                   <>
-                    <img src={frontPreview} alt="Front preview" className="cnic-upload-preview" />
-                    <div className="cnic-upload-overlay">
-                      <FaCheckCircle className="cnic-check-icon" />
+                    <img src={frontPreview} alt="Front preview" className="form-upload-preview" />
+                    <div className="form-upload-overlay">
+                      <FaCheckCircle className="form-check-icon" />
                       <span>Change</span>
                     </div>
                   </>
                 ) : (
                   <>
-                    <FaUpload className="cnic-upload-icon" />
-                    <span className="cnic-upload-text">Upload Front</span>
-                    <span className="cnic-upload-hint">JPG, PNG up to 5MB</span>
+                    <FaUpload className="form-upload-icon" />
+                    <span className="form-upload-text">Upload Front</span>
+                    <span className="form-upload-hint">JPG, PNG up to 5MB</span>
                   </>
                 )}
               </label>
-              <input
-                id="cnic-front"
-                type="file"
-                accept="image/*"
-                style={{ display: "none" }}
-                onChange={(e) => handleFileChange(e, "front")}
-              />
+              <input id="cnic-front" type="file" accept="image/*"
+                style={{ display: "none" }} onChange={(e) => handleFileChange(e, "front")} />
             </div>
 
-            {/* Back */}
-            <div className="cnic-upload-box">
-              <label className="cnic-label">Back Side</label>
-              <label className="cnic-upload-area" htmlFor="cnic-back">
+            <div className="form-upload-box">
+              <label className="form-label">Back Side</label>
+              <label className="form-upload-area" htmlFor="cnic-back">
                 {backPreview ? (
                   <>
-                    <img src={backPreview} alt="Back preview" className="cnic-upload-preview" />
-                    <div className="cnic-upload-overlay">
-                      <FaCheckCircle className="cnic-check-icon" />
+                    <img src={backPreview} alt="Back preview" className="form-upload-preview" />
+                    <div className="form-upload-overlay">
+                      <FaCheckCircle className="form-check-icon" />
                       <span>Change</span>
                     </div>
                   </>
                 ) : (
                   <>
-                    <FaUpload className="cnic-upload-icon" />
-                    <span className="cnic-upload-text">Upload Back</span>
-                    <span className="cnic-upload-hint">JPG, PNG up to 5MB</span>
+                    <FaUpload className="form-upload-icon" />
+                    <span className="form-upload-text">Upload Back</span>
+                    <span className="form-upload-hint">JPG, PNG up to 5MB</span>
                   </>
                 )}
               </label>
-              <input
-                id="cnic-back"
-                type="file"
-                accept="image/*"
-                style={{ display: "none" }}
-                onChange={(e) => handleFileChange(e, "back")}
-              />
+              <input id="cnic-back" type="file" accept="image/*"
+                style={{ display: "none" }} onChange={(e) => handleFileChange(e, "back")} />
             </div>
 
           </div>
 
-          {/* Info note */}
-          <p className="cnic-info-note">
+          <p className="form-info-note">
             🔒 Your documents are encrypted and only reviewed by our verification team.
           </p>
 
-          <button className="auth-btn cnic-submit-btn" disabled={loading}>
+          <button className="auth-btn form-submit-btn" disabled={loading}>
             {loading ? (
-              <span className="cnic-btn-loading">
-                <span className="cnic-btn-spinner" /> Submitting...
+              <span className="form-btn-loading">
+                <span className="form-btn-spinner" /> Submitting...
               </span>
-            ) : (
-              "Submit for Verification"
-            )}
+            ) : "Submit for Verification"}
           </button>
 
         </form>

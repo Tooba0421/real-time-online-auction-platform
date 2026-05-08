@@ -33,7 +33,7 @@
 
 /* Form */
 
-.form-grid {
+.checkout-form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
@@ -238,7 +238,7 @@
     padding: 18px;
   }
 
-  .form-grid {
+  .checkout-form-grid {
     grid-template-columns: 1fr; /* ⭐ stack inputs */
     gap: 15px;
   }
