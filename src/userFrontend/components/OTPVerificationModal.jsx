@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FaTimes } from "react-icons/fa";
-import { supabase } from "../../supabase/supabase";
+import { generateOTP, storeOTP, verifyOTP } from "../../utils/otpHelper";
+import { sendOTPEmail } from "../../utils/emailHelper";
 import toast from "react-hot-toast";
 import "../styles/auth.css";
 
@@ -21,19 +22,16 @@ const OTPVerificationModal = ({ email, closeModal, onVerified }) => {
     try {
       setLoading(true);
 
-      const { error } = await supabase.auth.verifyOtp({
-        email: email,
-        token: otp,
-        type: 'signup'
-      });
+      // Verify OTP locally
+      const result = verifyOTP(otp);
 
-      if (error) {
-        toast.error(error.message);
+      if (!result.valid) {
+        toast.error(result.message);
         return;
       }
 
       toast.success("Email verified successfully!");
-      onVerified(); // callback to close everything
+      onVerified();
 
     } catch (err) {
       console.error(err);
@@ -47,21 +45,25 @@ const OTPVerificationModal = ({ email, closeModal, onVerified }) => {
     try {
       setResending(true);
 
-      const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email: email
-      });
+      // Generate new OTP
+      const newOtp = generateOTP();
 
-      if (error) {
-        toast.error(error.message);
+      // Store new OTP
+      storeOTP(email, newOtp);
+
+      // Send new OTP via EmailJS
+      const result = await sendOTPEmail(email, '', newOtp);
+
+      if (!result.success) {
+        toast.error("Failed to resend OTP. Please try again.");
         return;
       }
 
-      toast.success("Verification code resent! Check your email.");
+      toast.success("New OTP sent! Check your email.");
 
     } catch (err) {
       console.error(err);
-      toast.error("Something went wrong. Please try again.");
+      toast.error("Something went wrong.");
     } finally {
       setResending(false);
     }
@@ -87,7 +89,6 @@ const OTPVerificationModal = ({ email, closeModal, onVerified }) => {
             maxLength={6}
             value={otp}
             onChange={(e) => {
-              // Only allow numbers
               const val = e.target.value.replace(/[^0-9]/g, '');
               setOtp(val);
             }}
@@ -104,7 +105,10 @@ const OTPVerificationModal = ({ email, closeModal, onVerified }) => {
           Didn't receive the code?
           <span
             onClick={handleResend}
-            style={{ opacity: resending ? 0.5 : 1, pointerEvents: resending ? 'none' : 'auto' }}
+            style={{
+              opacity: resending ? 0.5 : 1,
+              pointerEvents: resending ? 'none' : 'auto'
+            }}
           >
             {resending ? " Resending..." : " Resend Code"}
           </span>

@@ -3,6 +3,8 @@ import { FaTimes } from "react-icons/fa";
 import { supabase } from "../../supabase/supabase";
 import toast from "react-hot-toast";
 import OTPVerificationModal from "./OTPVerificationModal";
+import { generateOTP, storeOTP } from "../../utils/otpHelper";
+import { sendOTPEmail } from "../../utils/emailHelper";
 import "../styles/auth.css";
 
 const SignupModal = ({ closeModal, openLogin }) => {
@@ -12,8 +14,6 @@ const SignupModal = ({ closeModal, openLogin }) => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
-
-  // OTP state
   const [showOTP, setShowOTP] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState("");
 
@@ -33,13 +33,12 @@ const SignupModal = ({ closeModal, openLogin }) => {
     try {
       setLoading(true);
 
+      // Step 1: Create user in Supabase Auth
       const { data, error } = await supabase.auth.signUp({
         email: email,
         password: password,
         options: {
-          data: {
-            name: name,
-          }
+          data: { name: name }
         }
       });
 
@@ -48,9 +47,23 @@ const SignupModal = ({ closeModal, openLogin }) => {
         return;
       }
 
-      console.log("User created successfully:", data.user);
+      // Step 2: Generate OTP
+      const otp = generateOTP();
 
-      // Save email and show OTP modal
+      // Step 3: Store OTP locally with expiry
+      storeOTP(email, otp);
+
+      // Step 4: Send OTP via EmailJS
+      const emailResult = await sendOTPEmail(email, name, otp);
+
+      if (!emailResult.success) {
+        toast.error("Failed to send OTP email. Please try again.");
+        return;
+      }
+
+      toast.success("OTP sent to your email!");
+
+      // Step 5: Show OTP modal
       setRegisteredEmail(email);
       setShowOTP(true);
 
@@ -62,13 +75,11 @@ const SignupModal = ({ closeModal, openLogin }) => {
     }
   };
 
-  // Called when OTP verified successfully
   const handleVerified = () => {
     toast.success("Account created and verified successfully!");
     closeModal();
   };
 
-  // Show OTP modal instead of signup modal
   if (showOTP) {
     return (
       <OTPVerificationModal
