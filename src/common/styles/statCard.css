@@ -22,13 +22,13 @@
   left: 0;
   height: 5px;
   width: 100%;
-  background: linear-gradient(90deg, #D4AF37, #F5D76E);
+  background: linear-gradient(90deg, var(--color-gold), var(--color-gold));
 }
 
 .stat-card:hover {
   transform: translateY(-0.3rem);
   box-shadow: 0 0.8rem 2rem rgba(0, 0, 0, 0.15);
-  background: #F9FAFB;
+  /* background: #F9FAFB; */
 }
 
 .stat-card-title {

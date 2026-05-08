@@ -137,8 +137,8 @@ RIGHT SIDE LAYOUT (Header + Content)
 }
 
 /* ======================================================
-   HEADER
-   ====================================================== */
+HEADER
+====================================================== */
 
 .header {
     height: 4.5rem;
@@ -213,9 +213,17 @@ RIGHT SIDE LAYOUT (Header + Content)
     object-fit: cover;
 }
 
-.profile-name {
-    font-size: 0.95rem;
-    font-weight: 500;
+.profile-avatar-placeholder {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background-color: var(--color-gold);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 16px;
 }
 
 /* ======================================================

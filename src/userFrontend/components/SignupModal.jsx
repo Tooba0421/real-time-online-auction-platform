@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FaTimes } from "react-icons/fa";
 import { supabase } from "../../supabase/supabase";
 import toast from "react-hot-toast";
+import OTPVerificationModal from "./OTPVerificationModal";
 import "../styles/auth.css";
 
 const SignupModal = ({ closeModal, openLogin }) => {
@@ -11,6 +12,10 @@ const SignupModal = ({ closeModal, openLogin }) => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // OTP state
+  const [showOTP, setShowOTP] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState("");
 
   const handleSignup = async (e) => {
     e.preventDefault();
@@ -44,8 +49,10 @@ const SignupModal = ({ closeModal, openLogin }) => {
       }
 
       console.log("User created successfully:", data.user);
-      toast.success("Account created successfully!");
-      closeModal();
+
+      // Save email and show OTP modal
+      setRegisteredEmail(email);
+      setShowOTP(true);
 
     } catch (error) {
       console.error(error.message);
@@ -54,6 +61,23 @@ const SignupModal = ({ closeModal, openLogin }) => {
       setLoading(false);
     }
   };
+
+  // Called when OTP verified successfully
+  const handleVerified = () => {
+    toast.success("Account created and verified successfully!");
+    closeModal();
+  };
+
+  // Show OTP modal instead of signup modal
+  if (showOTP) {
+    return (
+      <OTPVerificationModal
+        email={registeredEmail}
+        closeModal={() => setShowOTP(false)}
+        onVerified={handleVerified}
+      />
+    );
+  }
 
   return (
     <div className="auth-overlay">

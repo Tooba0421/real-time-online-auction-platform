@@ -7,6 +7,7 @@ import CnicModal from "../components/CnicModal";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import ProductCard from "../components/ProductCard";
+import { supabase } from "../../supabase/supabase";
 import "../styles/productDetailPage.css";
 import "../styles/common.css";
 import "../styles/homePage.css";
@@ -30,72 +31,77 @@ const ProductDetailPage = () => {
   const [showCnic, setShowCnic] = useState(false);
 
   const handleBid = async () => {
-  try {
-    // 🔥 STEP 1: VALIDATE BID INPUT FIRST
-    const bid = Number(bidAmount);
+    try {
+      // STEP 1: Validate bid input
+      const bid = Number(bidAmount);
 
-    if (!bidAmount || bidAmount.trim() === "") {
-      alert("Please enter a bid amount");
-      return;
+      if (!bidAmount || bidAmount === "") {
+        alert("Please enter a bid amount");
+        return;
+      }
+
+      if (isNaN(bid) || bid <= 0) {
+        alert("Please enter a valid amount");
+        return;
+      }
+
+      if (bid <= currentBid) {
+        alert(`Bid must be greater than PKR ${currentBid.toLocaleString()}`);
+        return;
+      }
+
+      // STEP 2: Check if user is logged in
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) {
+        setShowLogin(true);
+        return;
+      }
+
+      // STEP 3: Fetch profile
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("id_verified")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError || !profile) {
+        alert("Could not fetch user profile. Please try again.");
+        return;
+      }
+
+      const verificationStatus = profile.id_verified;
+
+      // STEP 4: CNIC check — only "verified" is allowed to bid
+      if (verificationStatus !== "verified") {
+
+        if (verificationStatus === "pending") {
+          alert("Your CNIC is under review. You can place bids once approved.");
+          return;
+        }
+
+        if (verificationStatus === "rejected") {
+          alert("Your CNIC was rejected. Please resubmit.");
+          setShowCnic(true);
+          return;
+        }
+
+        // null, undefined, "unverified", or anything else → show CNIC modal
+        alert("You need to verify your CNIC before placing a bid.");
+        setShowCnic(true);
+        return;
+      }
+
+      // STEP 5: Place the bid — only reaches here if verified
+      setCurrentBid(bid);
+      setBidAmount("");
+      alert("Bid placed successfully!");
+
+    } catch (error) {
+      console.error("Bid Error:", error);
+      alert("Something went wrong. Please try again.");
     }
-
-    if (isNaN(bid) || bid <= 0) {
-      alert("Please enter a valid amount");
-      return;
-    }
-
-    if (bid <= currentBid) {
-      alert(`Bid must be greater than PKR ${currentBid.toLocaleString()}`);
-      return;
-    }
-
-    // 🔥 STEP 2: CHECK LOGIN
-    const user = auth.currentUser;
-
-    if (!user) {
-      setShowLogin(true);
-      return;
-    }
-
-    // 🔥 STEP 3: FETCH USER DATA (ONLY ONCE)
-    const q = query(collection(db, "users"), where("uid", "==", user.uid));
-    const snapshot = await getDocs(q);
-
-    if (snapshot.empty) {
-      alert("User not found");
-      return;
-    }
-
-    const userData = snapshot.docs[0].data();
-
-    // 🔥 STEP 4: CNIC VERIFICATION CHECK
-    if (!userData.idVerified || userData.idVerified === "not_submitted") {
-      setShowCnic(true);
-      return;
-    }
-
-    if (userData.idVerified === "pending") {
-      alert("Your CNIC is under review.");
-      return;
-    }
-
-    if (userData.idVerified === "rejected") {
-      alert("Your CNIC was rejected. Please resubmit.");
-      setShowCnic(true);
-      return;
-    }
-
-    // 🔥 STEP 5: SUCCESS (PLACE BID)
-    setCurrentBid(bid);
-    setBidAmount("");
-
-    alert("Bid placed successfully!");
-
-  } catch (error) {
-    console.error("Bid Error:", error);
-    alert("Something went wrong. Please try again.");
-  }
-};
+  };
 
 
 

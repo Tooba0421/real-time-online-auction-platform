@@ -7,7 +7,9 @@ import {
   Legend,
 } from "chart.js";
 import { Doughnut } from "react-chartjs-2";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { supabase } from "../../supabase/supabase";
+import toast from "react-hot-toast";
 import "../styles/adminLayout.css";
 import "../styles/userManagement.css";
 import StatusBadge from "../../common/components/StatusBadge";
@@ -21,124 +23,169 @@ ChartJS.register(
   Legend
 );
 
-const initialUsers = [
-  {
-    id: "USR-101",
-    name: "Ali Khan",
-    email: "ali@example.com",
-    phone: "+92 300 1234567",
-    role: "Buyer",
-    accountVerified: true,
-    idVerified: false,
-    status: "Active",
-    registrationDate: "2025-12-01",
-    lastLogin: "2 hours ago",
-    totalPurchases: 5,
-    address: "Lahore, Pakistan",
-  },
-  {
-    id: "USR-102",
-    name: "Sara Ahmed",
-    email: "sara@example.com",
-    phone: "+92 301 9876543",
-    role: "Seller",
-    accountVerified: false,
-    idVerified: false,
-    status: "Suspended",
-    registrationDate: "2025-11-15",
-    lastLogin: "3 days ago",
-    totalListings: 12,
-    address: "Karachi, Pakistan",
-  },
-  {
-    id: "USR-103",
-    name: "Zain Malik",
-    email: "zain@example.com",
-    phone: "+92 302 5555555",
-    role: "Buyer & Seller",
-    accountVerified: true,
-    idVerified: true,
-    status: "Active",
-    registrationDate: "2025-10-20",
-    lastLogin: "1 hour ago",
-    totalListings: 8,
-    totalPurchases: 3,
-    address: "Islamabad, Pakistan",
-  },
-];
-  
-  const UserManagement = () => {
-  const [users, setUsers] = useState(initialUsers);
+const UserManagement = () => {
+
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [suspending, setSuspending] = useState(null);
 
-  const toggleStatus = (id) => {
-    setUsers((prev) =>
-      prev.map((user) =>
-        user.id === id
-          ? { ...user, status: user.status === "Active" ? "Suspended" : "Active" }
-          : user
-      )
-    );
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('join_date', { ascending: false });
+
+      if (error) {
+        toast.error("Error fetching users");
+        console.error(error);
+        return;
+      }
+
+      setUsers(data || []);
+
+    } catch (err) {
+      console.error(err);
+      toast.error("Something went wrong");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // 🔎 Filtered Users Logic
+  // Toggle suspend/activate user
+  const handleToggleStatus = async (userId, currentStatus) => {
+    const newStatus = currentStatus === 'active' ? 'suspended' : 'active';
+    const action = newStatus === 'suspended' ? 'suspend' : 'activate';
+
+    if (!window.confirm(`Are you sure you want to ${action} this user?`)) return;
+
+    try {
+      setSuspending(userId);
+
+      // Update profile status
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ status: newStatus })
+        .eq('id', userId);
+
+      if (profileError) {
+        toast.error(`Error ${action}ing user`);
+        console.error(profileError);
+        return;
+      }
+
+      // Log admin action
+      await supabase
+        .from('admin_actions')
+        .insert({
+          admin_id: (await supabase.auth.getUser()).data.user.id,
+          action_type: newStatus === 'suspended' ? 'suspend' : 'approve',
+          target_id: userId,
+          target_table: 'profiles',
+          remarks: newStatus === 'suspended'
+            ? 'User account suspended by admin'
+            : 'User account reactivated by admin'
+        });
+
+      // Notify user
+      await supabase
+        .from('notifications')
+        .insert({
+          user_id: userId,
+          title: newStatus === 'suspended' ? 'Account Suspended' : 'Account Activated',
+          message: newStatus === 'suspended'
+            ? 'Your account has been suspended by admin.'
+            : 'Your account has been reactivated by admin.',
+          type: 'approval',
+          notification_for: 'user',
+          is_read: false
+        });
+
+      // Update local state
+      setUsers(prev =>
+        prev.map(u =>
+          u.id === userId ? { ...u, status: newStatus } : u
+        )
+      );
+
+      toast.success(`User ${action}d successfully`);
+
+    } catch (err) {
+      console.error(err);
+      toast.error("Something went wrong");
+    } finally {
+      setSuspending(null);
+    }
+  };
+
+  // Filter users
   const filteredUsers = users.filter((user) => {
     const matchesSearch =
-      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.phone.includes(searchTerm);
+      user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.id?.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesRole =
-      roleFilter === "All" || user.role === roleFilter;
+      roleFilter === "All" || user.role === roleFilter.toLowerCase();
 
     const matchesStatus =
-      statusFilter === "All" || user.status === statusFilter;
+      statusFilter === "All" ||
+      user.status?.toLowerCase() === statusFilter.toLowerCase();
 
     return matchesSearch && matchesRole && matchesStatus;
   });
 
+  // Stats
   const totalUsers = users.length;
-  const totalSellers = users.filter((u) => u.role === "Seller" || u.role === "Buyer & Seller").length;
-  const totalBuyers = users.filter((u) => u.role === "Buyer" || u.role === "Buyer & Seller").length;
-  const suspendedUsers = users.filter(u => u.status === "Suspended").length;
+  const totalSellers = users.filter(u => u.role === 'seller').length;
+  const totalBuyers = users.filter(u => u.role === 'buyer').length;
+  const suspendedUsers = users.filter(u => u.status === 'suspended').length;
 
   const statsData = [
     {
       title: "Total Users",
-      value: totalUsers,
+      value: loading ? "..." : totalUsers,
       subtitle: "All registered users"
     },
     {
       title: "Total Sellers",
-      value: totalSellers,
+      value: loading ? "..." : totalSellers,
       subtitle: "Users who can list auctions"
     },
     {
       title: "Total Buyers",
-      value: totalBuyers,
+      value: loading ? "..." : totalBuyers,
       subtitle: "Users who can place bids"
     },
     {
       title: "Suspended Accounts",
-      value: suspendedUsers,
+      value: loading ? "..." : suspendedUsers,
       subtitle: "Restricted accounts"
     }
   ];
 
+  // Chart data
   const userRoleData = useMemo(() => {
-    const buyers = users.filter(u => u.role === "Buyer").length;
-    const sellers = users.filter(u => u.role === "Seller").length;
-    const both = users.filter(u => u.role === "Buyer & Seller").length;
+    const buyers = users.filter(u => u.role === 'buyer').length;
+    const sellers = users.filter(u => u.role === 'seller').length;
+    const regularUsers = users.filter(u => u.role === 'user').length;
+    const admins = users.filter(u => u.role === 'admin').length;
 
     return {
-      labels: ["Buyers", "Sellers", "Both"],
+      labels: ["Buyers", "Sellers", "Users", "Admins"],
       datasets: [
         {
-          data: [buyers, sellers, both],
-          backgroundColor: ["#3B82F6", "#10B981", "#F59E0B"],
+          data: [buyers, sellers, regularUsers, admins],
+          backgroundColor: ["#3B82F6", "#10B981", "#F59E0B", "#E74A3B"],
         },
       ],
     };
@@ -149,26 +196,42 @@ const initialUsers = [
     maintainAspectRatio: false,
     cutout: "0%",
     layout: {
-      padding: {
-        top: 10,    // space above the chart
-        bottom: 30, // space below the chart
-      },
+      padding: { top: 10, bottom: 30 },
     },
     plugins: {
       legend: {
         position: "top",
         align: "center",
-        labels: {
-          boxWidth: 30,
-          padding: 15,
-        },
+        labels: { boxWidth: 30, padding: 15 },
       },
     },
+  };
+
+  // Format date
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '—';
+    return new Date(dateStr).toLocaleDateString('en-PK', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  // Get role label
+  const getRoleLabel = (role) => {
+    switch (role) {
+      case 'user': return 'User';
+      case 'buyer': return 'Buyer';
+      case 'seller': return 'Seller';
+      case 'admin': return 'Admin';
+      default: return role || '—';
+    }
   };
 
   return (
     <div className="admin-page">
 
+      {/* STAT CARDS */}
       <div className="stats-grid">
         {statsData.map((item, index) => (
           <StatCard
@@ -180,14 +243,15 @@ const initialUsers = [
         ))}
       </div>
 
+      {/* USER TABLE */}
       <div className="admin-section">
         <h3 className="admin-section-heading">All Users</h3>
 
-        {/* 🔎 Search & Filter Section */}
+        {/* Search & Filter */}
         <div className="admin-controls">
           <input
             type="text"
-            placeholder="Search by name, email, ID or phone..."
+            placeholder="Search by name, email or ID..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -197,9 +261,10 @@ const initialUsers = [
             onChange={(e) => setRoleFilter(e.target.value)}
           >
             <option value="All">All Roles</option>
+            <option value="User">User</option>
             <option value="Buyer">Buyer</option>
             <option value="Seller">Seller</option>
-            <option value="Buyer & Seller">Buyer & Seller</option>
+            <option value="Admin">Admin</option>
           </select>
 
           <select
@@ -212,71 +277,93 @@ const initialUsers = [
           </select>
         </div>
 
-        <div className="table-wrapper">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>User ID</th>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>Role</th>
-                <th>Account Verified</th>
-                <th>ID Verified</th>
-                <th>Status</th>
-                <th>Registration Date</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {filteredUsers.length === 0 ? (
+        {loading ? (
+          <div className="loading-state">Loading users...</div>
+        ) : (
+          <div className="table-wrapper">
+            <table className="admin-table">
+              <thead>
                 <tr>
-                  <td colSpan="10" className="no-data">
-                    No users found
-                  </td>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>ID Verified</th>
+                  <th>Status</th>
+                  <th>Registration Date</th>
+                  <th>Action</th>
                 </tr>
-              ) : (
-                filteredUsers.map((user) => (
-                  <tr key={user.id}>
-                    <td className="user-id">{user.id}</td>
-                    <td>{user.name}</td>
-                    <td>{user.email}</td>
-                    <td>{user.phone}</td>
-                    <td>
-                      <span className="role-badge">{user.role}</span>
-                    </td>
+              </thead>
 
-                    <td>
-                      <StatusBadge
-                        label={user.accountVerified ? "Verified" : "Not Verified"}
-                        type={user.accountVerified ? "approved" : "pending"}
-                      />
+              <tbody>
+                {filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="no-data">
+                      No users found
                     </td>
-
-                    <td>
-                      <StatusBadge
-                        label={user.idVerified ? "Approved" : "Pending"}
-                        type={user.idVerified ? "approved" : "pending"}
-                      />
-                    </td>
-
-                    <td onClick={() => toggleStatus(user.id)}>
-                      <StatusBadge
-                        label={user.status}
-                        type={user.status.toLowerCase()}
-                      />
-                    </td>
-
-                    <td>{user.registrationDate}</td>
-                   
                   </tr>
-                )))}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  filteredUsers.map((user) => (
+                    <tr key={user.id}>
+                      <td>{user.name || '—'}</td>
+                      <td>{user.email || '—'}</td>
+                      <td>
+                        <span className="role-badge">
+                          {getRoleLabel(user.role)}
+                        </span>
+                      </td>
+
+                      <td>
+                        <StatusBadge
+                          label={
+                            user.id_verified === 'approved' ? 'Verified' :
+                            user.id_verified === 'pending' ? 'Pending' :
+                            user.id_verified === 'rejected' ? 'Rejected' :
+                            'Not Submitted'
+                          }
+                          type={
+                            user.id_verified === 'approved' ? 'approved' :
+                            user.id_verified === 'pending' ? 'pending' :
+                            user.id_verified === 'rejected' ? 'rejected' :
+                            'inactive'
+                          }
+                        />
+                      </td>
+
+                      <td>
+                        <StatusBadge
+                          label={user.status === 'active' ? 'Active' : 'Suspended'}
+                          type={user.status === 'active' ? 'active' : 'suspended'}
+                        />
+                      </td>
+
+                      <td>{formatDate(user.join_date)}</td>
+
+                      <td>
+                        {user.role !== 'admin' && (
+                          <button
+                            className={`action-btn ${user.status === 'active' ? 'btn-suspend' : 'btn-activate'}`}
+                            onClick={() => handleToggleStatus(user.id, user.status)}
+                            disabled={suspending === user.id}
+                          >
+                            {suspending === user.id
+                              ? 'Processing...'
+                              : user.status === 'active'
+                                ? 'Suspend'
+                                : 'Activate'
+                            }
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-
+      {/* CHART */}
       <div className="overview-grid chart-space">
         <div className="chart-box">
           <h3 className="admin-section-heading">User Distribution</h3>
@@ -285,6 +372,7 @@ const initialUsers = [
           </div>
         </div>
       </div>
+
     </div>
   );
 };
