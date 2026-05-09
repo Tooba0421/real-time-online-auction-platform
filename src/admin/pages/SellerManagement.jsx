@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Chart as ChartJS,
   ArcElement,
@@ -6,111 +6,197 @@ import {
   Legend,
 } from "chart.js";
 import { Doughnut } from "react-chartjs-2";
+import { supabase } from "../../supabase/supabase";
+import { useAuthContext } from "../../context/AuthContext";
+import toast from "react-hot-toast";
 import StatCard from "../../common/components/StatCard";
 import "../styles/adminLayout.css";
 import "../styles/sellerManagement.css";
-
 import StatusBadge from "../../common/components/StatusBadge";
 import ActionButton from "../../common/components/ActionButton";
-import frontSide from "../../assets/frontSide.jpeg";
-import backSide from "../../assets/backSide.jpeg";
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-/* ================= INITIAL DATA ================= */
-const initialPendingSellers = [
-  {
-    id: "USR-102",
-    name: "Sara Ahmed",
-    email: "sara@email.com",
-    businessName: "Sara Antiques",
-    city: "Multan",
-    cnic: "42101-1234567-8",
-    requestDate: "2026-01-18",
-    statusType: "pending",
-    cnicFront: frontSide,
-    cnicBack: backSide,
-    address: "123 Main Street, Gulberg, Multan, Pakistan"
-  },
-  {
-    id: "USR-103",
-    name: "Hassan Raza",
-    email: "hassan@email.com",
-    businessName: "Vintage Hub",
-    city: "Lahore",
-    cnic: "42101-9876543-2",
-    requestDate: "2026-01-20",
-    statusType: "pending",
-    cnicFront: frontSide,
-    cnicBack: backSide,
-    address: "45 Model Town, Lahore, Pakistan"
-  }
-];
-
-const initialApprovedSellers = [
-  {
-    id: "USR-101",
-    name: "Ali Khan",
-    listings: 12,
-    successRate: "78%",
-    earnings: "$4,250",
-    lastActive: "2 hours ago",
-    statusType: "approved",
-  },
-  {
-    id: "USR-104",
-    name: "Fatima Noor",
-    listings: 8,
-    successRate: "65%",
-    earnings: "$2,100",
-    lastActive: "1 day ago",
-    statusType: "approved",
-  }
-];
-
-const initialRejectedSellers = [
-  {
-    id: "USR-100",
-    name: "Bilal Ahmed",
-    statusType: "rejected",
-    reason: "Uploaded blurred CNIC image which was not readable."
-  },
-  {
-    id: "USR-099",
-    name: "Usman Tariq",
-    statusType: "suspended",
-    reason: "Violation of auction rules and suspicious bidding activity detected."
-  }
-];
-
 const SellerManagement = () => {
-  const [pendingSellers, setPendingSellers] = useState(initialPendingSellers);
-  const [approvedSellers, setApprovedSellers] = useState(initialApprovedSellers);
-  const [rejectedSellers, setRejectedSellers] = useState(initialRejectedSellers);
+
+  const { user } = useAuthContext();
+
+  const [pendingSellers, setPendingSellers] = useState([]);
+  const [approvedSellers, setApprovedSellers] = useState([]);
+  const [rejectedSellers, setRejectedSellers] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selectedCnicSeller, setSelectedCnicSeller] = useState(null);
   const [selectedSeller, setSelectedSeller] = useState(null);
   const [reasonText, setReasonText] = useState("");
-  const [actionType, setActionType] = useState(""); // reject or suspend
+  const [actionType, setActionType] = useState("");
+  const [processing, setProcessing] = useState(false);
 
-  /* ================= ACTIONS ================= */
-  const handleApprove = (sellerId) => {
-    const seller = pendingSellers.find((s) => s.id === sellerId);
-    if (!seller) return;
+  useEffect(() => {
+    fetchSellers();
+  }, []);
 
-    setPendingSellers(prev => prev.filter(s => s.id !== sellerId));
+  const fetchSellers = async () => {
+    try {
+      setLoading(true);
 
-    setApprovedSellers(prev => [
-      ...prev,
-      {
-        id: seller.id,
-        name: seller.name,
-        listings: 0,
-        successRate: "0%",
-        earnings: "$0",
-        lastActive: "Just now",
-        statusType: "approved",
+      // Fetch all sellers with their profile info
+      const { data, error } = await supabase
+        .from('sellers')
+        .select(`
+          *,
+          profiles (
+            id,
+            name,
+            role,
+            status
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        toast.error("Error fetching sellers");
+        console.error(error);
+        return;
       }
-    ]);
+
+      // Separate sellers by status
+      const pending = [];
+      const approved = [];
+      const rejected = [];
+
+      for (const seller of data) {
+
+        // Calculate listings count
+        const { count: listingsCount } = await supabase
+          .from('auctions')
+          .select('*', { count: 'exact', head: true })
+          .eq('seller_id', seller.id)
+          .in('status', ['live', 'ended', 'scheduled']);
+
+        // Calculate success rate
+        const { count: totalEnded } = await supabase
+          .from('auctions')
+          .select('*', { count: 'exact', head: true })
+          .eq('seller_id', seller.id)
+          .eq('status', 'ended');
+
+        const { count: totalSold } = await supabase
+          .from('products')
+          .select('*', { count: 'exact', head: true })
+          .eq('seller_id', seller.id)
+          .eq('status', 'sold');
+
+        const successRate = totalEnded > 0
+          ? ((totalSold / totalEnded) * 100).toFixed(1)
+          : 0;
+
+        // Calculate earnings
+        const { data: transactionData } = await supabase
+          .from('transactions')
+          .select('seller_amount')
+          .eq('seller_id', seller.id)
+          .eq('status', 'released');
+
+        const earnings = transactionData?.reduce(
+          (sum, t) => sum + (t.seller_amount || 0), 0
+        ) || 0;
+
+        const sellerWithStats = {
+          ...seller,
+          name: seller.profiles?.name || '—',
+          listings: listingsCount || 0,
+          successRate: `${successRate}%`,
+          earnings: `PKR ${earnings.toLocaleString()}`,
+        };
+
+        if (seller.is_verified === 'pending') {
+          pending.push(sellerWithStats);
+        } else if (seller.is_verified === 'approved') {
+          approved.push(sellerWithStats);
+        } else if (
+          seller.is_verified === 'rejected' ||
+          seller.is_verified === 'suspended'
+        ) {
+          rejected.push(sellerWithStats);
+        }
+      }
+
+      setPendingSellers(pending);
+      setApprovedSellers(approved);
+      setRejectedSellers(rejected);
+
+    } catch (err) {
+      console.error(err);
+      toast.error("Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Approve seller
+  const handleApprove = async (seller) => {
+    try {
+      setProcessing(true);
+
+      // Step 1: Update seller is_verified to approved
+      const { error: sellerError } = await supabase
+        .from('sellers')
+        .update({ is_verified: 'approved' })
+        .eq('id', seller.id);
+
+      if (sellerError) {
+        toast.error("Error approving seller");
+        console.error(sellerError);
+        return;
+      }
+
+      // Step 2: Update profile role to seller
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ role: 'seller' })
+        .eq('id', seller.user_id);
+
+      if (profileError) {
+        toast.error("Error updating seller role");
+        console.error(profileError);
+        return;
+      }
+
+      // Step 3: Log admin action
+      await supabase
+        .from('admin_actions')
+        .insert({
+          admin_id: user.id,
+          action_type: 'approve',
+          target_id: seller.id,
+          target_table: 'sellers',
+          remarks: 'Seller approved by admin'
+        });
+
+      // Step 4: Notify seller
+      await supabase
+        .from('notifications')
+        .insert({
+          user_id: seller.user_id,
+          title: 'Seller Application Approved! 🎉',
+          message: 'Congratulations! Your seller application has been approved. You can now list products and create auctions.',
+          type: 'approval',
+          notification_for: 'seller',
+          is_read: false
+        });
+
+      toast.success(`${seller.name} approved as seller!`);
+
+      // Update local state
+      setPendingSellers(prev => prev.filter(s => s.id !== seller.id));
+      setApprovedSellers(prev => [...prev, { ...seller, is_verified: 'approved' }]);
+
+    } catch (err) {
+      console.error(err);
+      toast.error("Something went wrong");
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const openReasonModal = (seller, type) => {
@@ -119,28 +205,106 @@ const SellerManagement = () => {
     setReasonText("");
   };
 
-  const handleConfirmAction = () => {
-    if (!reasonText.trim()) return;
-
-    if (actionType === "reject") {
-      setPendingSellers(prev => prev.filter(s => s.id !== selectedSeller.id));
+  // Reject or suspend seller
+  const handleConfirmAction = async () => {
+    if (!reasonText.trim()) {
+      toast.error("Please write a reason");
+      return;
     }
 
-    if (actionType === "suspend") {
-      setApprovedSellers(prev => prev.filter(s => s.id !== selectedSeller.id));
-    }
+    try {
+      setProcessing(true);
 
-    setRejectedSellers(prev => [
-      ...prev,
-      {
-        id: selectedSeller.id,
-        name: selectedSeller.name,
-        statusType: actionType === "reject" ? "rejected" : "suspended",
-        reason: reasonText
+      const newStatus = actionType === 'reject' ? 'rejected' : 'suspended';
+
+      // Step 1: Update seller status
+      const { error: sellerError } = await supabase
+        .from('sellers')
+        .update({ is_verified: newStatus })
+        .eq('id', selectedSeller.id);
+
+      if (sellerError) {
+        toast.error(`Error ${actionType}ing seller`);
+        console.error(sellerError);
+        return;
       }
-    ]);
 
-    setSelectedSeller(null);
+      // Step 2: If rejecting → keep role as user
+      // If suspending → change role back to user
+      if (actionType === 'suspend') {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({ role: 'user' })
+          .eq('id', selectedSeller.user_id);
+
+        if (profileError) {
+          toast.error("Error updating seller role");
+          console.error(profileError);
+          return;
+        }
+      }
+
+      // Step 3: Log admin action
+      await supabase
+        .from('admin_actions')
+        .insert({
+          admin_id: user.id,
+          action_type: actionType === 'reject' ? 'reject' : 'suspend',
+          target_id: selectedSeller.id,
+          target_table: 'sellers',
+          remarks: reasonText
+        });
+
+      // Step 4: Notify seller
+      await supabase
+        .from('notifications')
+        .insert({
+          user_id: selectedSeller.user_id,
+          title: actionType === 'reject'
+            ? 'Seller Application Rejected'
+            : 'Seller Account Suspended',
+          message: actionType === 'reject'
+            ? `Your seller application has been rejected. Reason: ${reasonText}`
+            : `Your seller account has been suspended. Reason: ${reasonText}`,
+          type: 'approval',
+          notification_for: 'seller',
+          is_read: false
+        });
+
+      toast.success(
+        actionType === 'reject'
+          ? `${selectedSeller.name} rejected`
+          : `${selectedSeller.name} suspended`
+      );
+
+      // Update local state
+      if (actionType === 'reject') {
+        setPendingSellers(prev =>
+          prev.filter(s => s.id !== selectedSeller.id)
+        );
+      } else {
+        setApprovedSellers(prev =>
+          prev.filter(s => s.id !== selectedSeller.id)
+        );
+      }
+
+      setRejectedSellers(prev => [
+        ...prev,
+        {
+          ...selectedSeller,
+          is_verified: newStatus,
+          reason: reasonText
+        }
+      ]);
+
+      setSelectedSeller(null);
+
+    } catch (err) {
+      console.error(err);
+      toast.error("Something went wrong");
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const renderEmptyRow = (colSpan, message) => (
@@ -151,18 +315,45 @@ const SellerManagement = () => {
     </tr>
   );
 
-  /* ================= SELLER STATS ================= */
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '—';
+    return new Date(dateStr).toLocaleDateString('en-PK', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
 
+  // Stats
   const totalApproved = approvedSellers.length;
   const totalPending = pendingSellers.length;
   const totalRejected = rejectedSellers.length;
-
   const totalListings = approvedSellers.reduce(
-    (sum, seller) => sum + (seller.listings || 0),
-    0
+    (sum, seller) => sum + (seller.listings || 0), 0
   );
 
-  /* ================= CHART DATA ================= */
+  const statsData = [
+    {
+      title: "Approved Sellers",
+      value: loading ? "..." : totalApproved,
+      subtitle: "Currently active sellers",
+    },
+    {
+      title: "Pending Requests",
+      value: loading ? "..." : totalPending,
+      subtitle: "Awaiting verification",
+    },
+    {
+      title: "Rejected / Suspended",
+      value: loading ? "..." : totalRejected,
+      subtitle: "Restricted sellers",
+    },
+    {
+      title: "Total Listings",
+      value: loading ? "..." : totalListings,
+      subtitle: "From approved sellers",
+    },
+  ];
 
   const sellerStatusData = useMemo(() => ({
     labels: ["Approved", "Pending", "Rejected / Suspended"],
@@ -175,53 +366,25 @@ const SellerManagement = () => {
   }), [totalApproved, totalPending, totalRejected]);
 
   const doughnutOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        cutout: "0%",
-        layout: {
-            padding: {
-                top: 10,    // space above the chart
-                bottom: 30, // space below the chart
-            },
-        },
-        plugins: {
-            legend: {
-                position: "top",
-                align: "center",
-                labels: {
-                    boxWidth: 30,
-                    padding: 15,
-                },
-            },
-        },
-    };
-
-  const statsData = [
-    {
-      title: "Approved Sellers",
-      value: totalApproved,
-      subtitle: "Currently active sellers",
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: "0%",
+    layout: {
+      padding: { top: 10, bottom: 30 },
     },
-    {
-      title: "Pending Requests",
-      value: totalPending,
-      subtitle: "Awaiting verification",
+    plugins: {
+      legend: {
+        position: "top",
+        align: "center",
+        labels: { boxWidth: 30, padding: 15 },
+      },
     },
-    {
-      title: "Rejected / Suspended",
-      value: totalRejected,
-      subtitle: "Restricted sellers",
-    },
-    {
-      title: "Total Listings",
-      value: totalListings,
-      subtitle: "From approved sellers",
-    },
-  ];
+  };
 
   return (
     <div className="admin-page">
 
+      {/* STAT CARDS */}
       <div className="stats-grid">
         {statsData.map((item, index) => (
           <StatCard
@@ -233,165 +396,192 @@ const SellerManagement = () => {
         ))}
       </div>
 
-      {/* ================= PENDING TABLE ================= */}
+      {/* PENDING TABLE */}
       <div className="admin-section">
         <h3 className="admin-section-heading">Pending Sellers</h3>
-        <div className="table-wrapper">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>User ID</th>
-                <th>Seller</th>
-                <th>Email</th>
-                <th>Business</th>
-                <th>City</th>
-                <th>Address</th>
-                <th>View CNIC</th>
-                <th>Request Date</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pendingSellers.length === 0
-                ? renderEmptyRow(7, "No pending sellers.")
-                : pendingSellers.map(seller => (
-                  <tr key={seller.id}>
-                    <td>{seller.id}</td>
-                    <td>{seller.name}</td>
-                    <td>{seller.email}</td>
-                    <td>{seller.businessName}</td>
-                    <td>{seller.city}</td>
-                    <td>
-                      <span className="long-text" title={seller.address}>
-                        {seller.address}
-                      </span>
-                    </td>
-                    <td>
-                      <span
-                        className="view-image-link"
-                        onClick={() => setSelectedCnicSeller(seller)}
-                      >
-                        View CNIC
-                      </span>
-                    </td>
-                    <td>{seller.requestDate}</td>
-                    <td className="actions">
-                      <ActionButton
-                        label="Approve"
-                        variant="success"
-                        onClick={() => handleApprove(seller.id)}
-                      />
-                      <ActionButton
-                        label="Reject"
-                        variant="danger"
-                        onClick={() => openReasonModal(seller, "reject")}
-                      />
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
+        {loading ? (
+          <div className="loading-state">Loading sellers...</div>
+        ) : (
+          <div className="table-wrapper">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Seller</th>
+                  <th>Email</th>
+                  <th>Business</th>
+                  <th>City</th>
+                  <th>Address</th>
+                  <th>CNIC No</th>
+                  <th>View CNIC</th>
+                  <th>Request Date</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingSellers.length === 0
+                  ? renderEmptyRow(9, "No pending sellers.")
+                  : pendingSellers.map(seller => (
+                    <tr key={seller.id}>
+                      <td>{seller.name}</td>
+                      <td>{seller.email}</td>
+                      <td>{seller.business_name}</td>
+                      <td>{seller.city}</td>
+                      <td>
+                        <span className="long-text" title={seller.address}>
+                          {seller.address}
+                        </span>
+                      </td>
+                      <td>{seller.cnic_number}</td>
+                      <td>
+                        <span
+                          className="view-image-link"
+                          onClick={() => setSelectedCnicSeller(seller)}
+                        >
+                          View CNIC
+                        </span>
+                      </td>
+                      <td>{formatDate(seller.created_at)}</td>
+                      <td className="actions">
+                        <ActionButton
+                          label="Approve"
+                          variant="success"
+                          onClick={() => handleApprove(seller)}
+                          disabled={processing}
+                        />
+                        <ActionButton
+                          label="Reject"
+                          variant="danger"
+                          onClick={() => openReasonModal(seller, "reject")}
+                          disabled={processing}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* ================= APPROVED TABLE ================= */}
+      {/* APPROVED TABLE */}
       <div className="admin-section">
         <h3 className="admin-section-heading">Approved Sellers</h3>
-        <div className="table-wrapper">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>User ID</th>
-                <th>Seller</th>
-                <th>Listings</th>
-                <th>Success Rate</th>
-                <th>Earnings</th>
-                <th>Status</th>
-                <th>Last Active</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {approvedSellers.length === 0
-                ? renderEmptyRow(8, "No approved sellers.")
-                : approvedSellers.map(seller => (
-                  <tr key={seller.id}>
-                    <td>{seller.id}</td>
-                    <td>{seller.name}</td>
-                    <td>{seller.listings}</td>
-                    <td>{seller.successRate}</td>
-                    <td>{seller.earnings}</td>
-                    <td>
-                      <StatusBadge label="Approved" type="approved" />
-                    </td>
-                    <td>{seller.lastActive}</td>
-                    <td className="actions">
-                      <ActionButton
-                        label="Suspend"
-                        variant="danger"
-                        onClick={() => openReasonModal(seller, "suspend")}
-                      />
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
+        {loading ? (
+          <div className="loading-state">Loading sellers...</div>
+        ) : (
+          <div className="table-wrapper">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Seller</th>
+                  <th>Email</th>
+                  <th>Business</th>
+                  <th>Listings</th>
+                  <th>Success Rate</th>
+                  <th>Earnings</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {approvedSellers.length === 0
+                  ? renderEmptyRow(8, "No approved sellers.")
+                  : approvedSellers.map(seller => (
+                    <tr key={seller.id}>
+                      <td>{seller.name}</td>
+                      <td>{seller.email}</td>
+                      <td>{seller.business_name}</td>
+                      <td>{seller.listings}</td>
+                      <td>{seller.successRate}</td>
+                      <td>{seller.earnings}</td>
+                      <td>
+                        <StatusBadge label="Approved" type="approved" />
+                      </td>
+                      <td className="actions">
+                        <ActionButton
+                          label="Suspend"
+                          variant="danger"
+                          onClick={() => openReasonModal(seller, "suspend")}
+                          disabled={processing}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* ================= REJECTED TABLE ================= */}
+      {/* REJECTED TABLE */}
       <div className="admin-section">
         <h3 className="admin-section-heading">Rejected / Suspended Sellers</h3>
-        <div className="table-wrapper">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>User ID</th>
-                <th>Seller</th>
-                <th>Status</th>
-                <th>Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rejectedSellers.length === 0
-                ? renderEmptyRow(4, "No rejected sellers.")
-                : rejectedSellers.map(seller => (
-                  <tr key={seller.id}>
-                    <td>{seller.id}</td>
-                    <td>{seller.name}</td>
-                    <td>
-                      <StatusBadge label={seller.statusType} type="rejected" />
-                    </td>
-                    <td>
-                      <span className="long-text" title={seller.reason}>
-                        {seller.reason}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
+        {loading ? (
+          <div className="loading-state">Loading sellers...</div>
+        ) : (
+          <div className="table-wrapper">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Seller</th>
+                  <th>Email</th>
+                  <th>Business</th>
+                  <th>Status</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rejectedSellers.length === 0
+                  ? renderEmptyRow(5, "No rejected sellers.")
+                  : rejectedSellers.map(seller => (
+                    <tr key={seller.id}>
+                      <td>{seller.name}</td>
+                      <td>{seller.email}</td>
+                      <td>{seller.business_name}</td>
+                      <td>
+                        <StatusBadge
+                          label={
+                            seller.is_verified === 'rejected'
+                              ? 'Rejected'
+                              : 'Suspended'
+                          }
+                          type="rejected"
+                        />
+                      </td>
+                      <td>
+                        <span className="long-text" title={seller.reason}>
+                          {seller.reason || '—'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* ================= CNIC MODAL ================= */}
+      {/* CNIC MODAL */}
       {selectedCnicSeller && (
         <div className="cnic-modal-overlay">
           <div className="cnic-modal">
             <h3>CNIC Details - {selectedCnicSeller.name}</h3>
-
             <div className="cnic-images">
               <div>
                 <p>Front Side</p>
-                <img src={selectedCnicSeller.cnicFront} alt="CNIC Front" />
+                <img
+                  src={selectedCnicSeller.cnic_front}
+                  alt="CNIC Front"
+                />
               </div>
-
               <div>
                 <p>Back Side</p>
-                <img src={selectedCnicSeller.cnicBack} alt="CNIC Back" />
+                <img
+                  src={selectedCnicSeller.cnic_back}
+                  alt="CNIC Back"
+                />
               </div>
             </div>
-
             <button
               className="close-btn"
               onClick={() => setSelectedCnicSeller(null)}
@@ -402,32 +592,39 @@ const SellerManagement = () => {
         </div>
       )}
 
-      {/* ================= REASON MODAL ================= */}
+      {/* REASON MODAL */}
       {selectedSeller && (
         <div className="reason-modal-overlay">
           <div className="reason-modal">
-            <h3>{actionType === "reject" ? "Reject Seller" : "Suspend Seller"}</h3>
-
+            <h3>
+              {actionType === "reject" ? "Reject Seller" : "Suspend Seller"}
+            </h3>
             <textarea
               placeholder="Write reason here..."
               value={reasonText}
               onChange={(e) => setReasonText(e.target.value)}
             />
-
             <div className="modal-actions">
-              <button className="cancel" onClick={() => setSelectedSeller(null)}>
+              <button
+                className="cancel"
+                onClick={() => setSelectedSeller(null)}
+                disabled={processing}
+              >
                 Cancel
               </button>
-              <button className="confirm" onClick={handleConfirmAction}>
-                Confirm
+              <button
+                className="confirm"
+                onClick={handleConfirmAction}
+                disabled={processing}
+              >
+                {processing ? "Processing..." : "Confirm"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ================= SELLER STATUS CHART ================= */}
-
+      {/* CHART */}
       <div className="overview-grid chart-space">
         <div className="chart-box">
           <h3 className="admin-section-heading">Seller Status Overview</h3>
@@ -436,6 +633,7 @@ const SellerManagement = () => {
           </div>
         </div>
       </div>
+
     </div>
   );
 };
