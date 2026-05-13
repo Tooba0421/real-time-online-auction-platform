@@ -4,7 +4,13 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>real-time-online-auction-platform</title>
+    <title>Real-Time Online Auction Platform</title>
+    <script>
+      // Capture hash tokens BEFORE React loads and removes them
+      if (window.location.hash && window.location.hash.includes('type=recovery')) {
+        sessionStorage.setItem('recovery_hash', window.location.hash);
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

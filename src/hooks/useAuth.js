@@ -2,12 +2,10 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../supabase/supabase'
 
 export const useAuth = () => {
-
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  // Fetch profile from profiles table
   const fetchProfile = async (userId) => {
     const { data, error } = await supabase
       .from('profiles')
@@ -23,12 +21,17 @@ export const useAuth = () => {
   }
 
   useEffect(() => {
+    const isResetPage = window.location.pathname === '/reset-password'
+    const otpPending = sessionStorage.getItem('otp_data')
 
-    // Check if user is already logged in on page load
+    if (isResetPage || otpPending) {
+      setLoading(false)
+      return
+    }
+
     const getSession = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       setUser(session?.user ?? null)
-
       if (session?.user) {
         await fetchProfile(session.user.id)
       }
@@ -37,11 +40,13 @@ export const useAuth = () => {
 
     getSession()
 
-    // Watch for login and logout changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        setUser(session?.user ?? null)
+      async (event, session) => {
+        if (event === 'PASSWORD_RECOVERY' || event === 'INITIAL_SESSION') {
+          return
+        }
 
+        setUser(session?.user ?? null)
         if (session?.user) {
           await fetchProfile(session.user.id)
         } else {
@@ -51,9 +56,7 @@ export const useAuth = () => {
       }
     )
 
-    // Cleanup listener when component unmounts
     return () => subscription.unsubscribe()
-
   }, [])
 
   return { user, profile, loading }

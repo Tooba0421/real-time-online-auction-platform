@@ -8,7 +8,6 @@ import SellerPortal from "./seller/SellerPortal";
 import UserPortal from "./userFrontend/UserPortal";
 
 function App() {
-
   useEffect(() => {
     window.history.scrollRestoration = "manual";
   }, []);
@@ -16,24 +15,11 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-      <Toaster position="top-right" />
+        <Toaster position="top-right" />
         <Routes>
-          {/* User Portal — public */}
           <Route path="/*" element={<UserPortal />} />
-
-          {/* Admin Portal — admin only */}
-          <Route path="/admin/*" element={
-            // <ProtectedRoute allowedRole="admin">
-              <AdminPortal />
-            // </ProtectedRoute>
-          } />
-
-          {/* Seller Portal — seller only */}
-          <Route path="/seller/*" element={
-            // <ProtectedRoute allowedRole="seller">
-              <SellerPortal />
-            // </ProtectedRoute>
-          } />
+          <Route path="/admin/*" element={<AdminPortal />} />
+          <Route path="/seller/*" element={<SellerPortal />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

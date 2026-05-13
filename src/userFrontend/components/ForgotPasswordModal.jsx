@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FaTimes } from "react-icons/fa";
 import { forgotPassword } from "../../supabase/authService";
+import toast from "react-hot-toast";
 import "../styles/auth.css";
 
 const ForgotPasswordModal = ({ closeModal, openLogin }) => {
@@ -18,7 +19,7 @@ const ForgotPasswordModal = ({ closeModal, openLogin }) => {
       const result = await forgotPassword(email);
 
       if (!result.success) {
-        alert(result.message);
+        toast.error(result.message);
         return;
       }
 
@@ -26,20 +27,17 @@ const ForgotPasswordModal = ({ closeModal, openLogin }) => {
 
     } catch (error) {
       console.error(error);
-      alert("Something went wrong. Please try again.");
+      toast.error("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  // Success screen after email sent
   if (sent) {
     return (
       <div className="auth-overlay">
         <div className="auth-modal">
-
           <FaTimes className="close-icon" onClick={closeModal} />
-
           <div className="success-message">
             <h2>Email Sent! ✅</h2>
             <p>
@@ -53,7 +51,6 @@ const ForgotPasswordModal = ({ closeModal, openLogin }) => {
               Close
             </button>
           </div>
-
         </div>
       </div>
     );
@@ -62,16 +59,12 @@ const ForgotPasswordModal = ({ closeModal, openLogin }) => {
   return (
     <div className="auth-overlay">
       <div className="auth-modal">
-
         <FaTimes className="close-icon" onClick={closeModal} />
-
         <h2>Forgot Password</h2>
         <p className="auth-subtitle">
           Enter your email and we'll send you a reset link.
         </p>
-
         <form className="auth-form" onSubmit={handleSubmit}>
-
           <input
             className="auth-input"
             type="email"
@@ -80,18 +73,14 @@ const ForgotPasswordModal = ({ closeModal, openLogin }) => {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-
           <button className="auth-btn" disabled={loading}>
             {loading ? "Sending..." : "Send Reset Link"}
           </button>
-
         </form>
-
         <p className="switch-text">
           Remember your password?
           <span onClick={openLogin}> Login</span>
         </p>
-
       </div>
     </div>
   );

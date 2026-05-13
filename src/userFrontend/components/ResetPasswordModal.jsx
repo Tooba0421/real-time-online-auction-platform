@@ -1,80 +1,57 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { FaTimes } from "react-icons/fa";
-import { resetPassword } from "../../supabase/authService";
 import { supabase } from "../../supabase/supabase";
+import toast from "react-hot-toast";
 import "../styles/auth.css";
 
-const ResetPasswordModal = ({ closeModal }) => {
+const ResetPasswordModal = ({ closeModal, isValid }) => {
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [validLink, setValidLink] = useState(false);
-  const [checking, setChecking] = useState(true);
   const [done, setDone] = useState(false);
-
-  useEffect(() => {
-    // Check if user came from valid reset password email link
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setValidLink(!!session);
-      setChecking(false);
-    }
-    checkSession();
-  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (newPassword !== confirmPassword) {
-      alert("Passwords do not match");
+      toast.error("Passwords do not match");
       return;
     }
 
     if (newPassword.length < 6) {
-      alert("Password must be at least 6 characters");
+      toast.error("Password must be at least 6 characters");
       return;
     }
 
     try {
       setLoading(true);
 
-      const result = await resetPassword(newPassword);
+      const { data, error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
 
-      if (!result.success) {
-        alert(result.message);
+      if (error) {
+        toast.error(error.message);
         return;
       }
 
-      setDone(true); // show success screen
+      setDone(true);
+      toast.success("Password updated successfully!");
 
-    } catch (error) {
-      console.error(error);
-      alert("Something went wrong. Please try again.");
+    } catch (err) {
+      console.error(err);
+      toast.error("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  // Still checking session
-  if (checking) {
+  if (!isValid) {
     return (
       <div className="auth-overlay">
         <div className="auth-modal">
-          <p>Verifying your reset link...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Invalid or expired link
-  if (!validLink) {
-    return (
-      <div className="auth-overlay">
-        <div className="auth-modal">
-
           <FaTimes className="close-icon" onClick={closeModal} />
-
           <h2>Invalid Link ❌</h2>
           <p className="auth-subtitle">
             This reset link is invalid or has expired.
@@ -83,47 +60,38 @@ const ResetPasswordModal = ({ closeModal }) => {
           <button className="auth-btn" onClick={closeModal}>
             Close
           </button>
-
         </div>
       </div>
     );
   }
 
-  // Success screen after password reset
   if (done) {
     return (
       <div className="auth-overlay">
         <div className="auth-modal">
-
           <FaTimes className="close-icon" onClick={closeModal} />
-
           <div className="success-message">
-            <h2>Password Reset! ✅</h2>
+            <h2>Password Updated! ✅</h2>
             <p>Your password has been updated successfully.</p>
+            <p>Please login with your new password.</p>
             <button className="auth-btn" onClick={closeModal}>
               Login Now
             </button>
           </div>
-
         </div>
       </div>
     );
   }
 
-  // Valid link — show reset form
   return (
     <div className="auth-overlay">
       <div className="auth-modal">
-
         <FaTimes className="close-icon" onClick={closeModal} />
-
         <h2>Reset Password</h2>
         <p className="auth-subtitle">
           Enter your new password below.
         </p>
-
         <form className="auth-form" onSubmit={handleSubmit}>
-
           <input
             className="auth-input"
             type="password"
@@ -132,7 +100,6 @@ const ResetPasswordModal = ({ closeModal }) => {
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
           />
-
           <input
             className="auth-input"
             type="password"
@@ -141,13 +108,10 @@ const ResetPasswordModal = ({ closeModal }) => {
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
           />
-
           <button className="auth-btn" disabled={loading}>
-            {loading ? "Resetting..." : "Reset Password"}
+            {loading ? "Updating..." : "Update Password"}
           </button>
-
         </form>
-
       </div>
     </div>
   );
