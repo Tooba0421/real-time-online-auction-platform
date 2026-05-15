@@ -33,52 +33,78 @@ const SignupModal = ({ closeModal, openLogin }) => {
     try {
       setLoading(true);
 
-      // Step 1: Create user in Supabase Auth
-      const { data, error } = await supabase.auth.signUp({
-        email: email,
-        password: password,
-        options: {
-          data: { name: name }
-        }
-      });
-
-      if (error) {
-        toast.error(error.message);
-        return;
-      }
-
-      // Step 2: Generate OTP
+      // 1. Generate OTP FIRST
       const otp = generateOTP();
 
-      // Step 3: Store OTP locally with expiry
+      // 2. Store OTP
       storeOTP(email, otp);
 
-      // Step 4: Send OTP via EmailJS
+      // 3. Send OTP email
       const emailResult = await sendOTPEmail(email, name, otp);
 
       if (!emailResult.success) {
-        toast.error("Failed to send OTP email. Please try again.");
+        toast.error("Failed to send OTP email");
         return;
       }
 
       toast.success("OTP sent to your email!");
 
-      // Step 5: Show OTP modal
+      // 4. Save temp signup data (IMPORTANT)
+      sessionStorage.setItem("pending_signup", JSON.stringify({
+        name,
+        email,
+        password
+      }));
+
+      // 5. Show OTP modal
       setRegisteredEmail(email);
       setShowOTP(true);
 
     } catch (error) {
-      console.error(error.message);
+      console.error(error);
       toast.error(error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleVerified = () => {
-    toast.success("Account created and verified successfully!");
+  const handleVerified = async () => {
+  try {
+
+    const pending = JSON.parse(sessionStorage.getItem("pending_signup"));
+
+    if (!pending) {
+      toast.error("Signup data not found");
+      return;
+    }
+
+    const { name, email, password } = pending;
+
+    // NOW create user in Supabase (ONLY AFTER OTP SUCCESS)
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { name }
+      }
+    });
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    sessionStorage.removeItem("pending_signup");
+
+    toast.success("Account created successfully!");
+
     closeModal();
-  };
+
+  } catch (err) {
+    console.error(err);
+    toast.error("Something went wrong");
+  }
+};
 
   if (showOTP) {
     return (

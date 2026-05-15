@@ -2,62 +2,102 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../supabase/supabase'
 
 export const useAuth = () => {
+
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const fetchProfile = async (userId) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single()
 
-    if (error) {
-      console.error('Error fetching profile:', error)
-    } else {
+    if (!userId) {
+      setProfile(null)
+      return
+    }
+
+    try {
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single()
+
+      if (error) {
+        console.error('Profile fetch error:', error)
+        setProfile(null)
+        return
+      }
+
       setProfile(data)
+
+    } catch (err) {
+      console.error(err)
+      setProfile(null)
     }
   }
 
   useEffect(() => {
-    const isResetPage = window.location.pathname === '/reset-password'
-    const otpPending = sessionStorage.getItem('otp_data')
 
-    if (isResetPage || otpPending) {
-      setLoading(false)
-      return
-    }
+    let mounted = true
 
-    const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        await fetchProfile(session.user.id)
-      }
-      setLoading(false)
-    }
+    const initializeAuth = async () => {
 
-    getSession()
+      try {
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'PASSWORD_RECOVERY' || event === 'INITIAL_SESSION') {
-          return
-        }
+        const {
+          data: { session }
+        } = await supabase.auth.getSession()
 
-        setUser(session?.user ?? null)
-        if (session?.user) {
-          await fetchProfile(session.user.id)
+        const currentUser = session?.user ?? null
+
+        if (!mounted) return
+
+        setUser(currentUser)
+
+        if (currentUser) {
+          await fetchProfile(currentUser.id)
         } else {
           setProfile(null)
         }
-        setLoading(false)
-      }
-    )
 
-    return () => subscription.unsubscribe()
+      } catch (err) {
+        console.error(err)
+      } finally {
+        if (mounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    initializeAuth()
+
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange(async (_, session) => {
+
+      const currentUser = session?.user ?? null
+
+      setUser(currentUser)
+
+      if (currentUser) {
+        await fetchProfile(currentUser.id)
+      } else {
+        setProfile(null)
+      }
+
+      setLoading(false)
+    })
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+
   }, [])
 
-  return { user, profile, loading }
+  return {
+    user,
+    profile,
+    loading
+  }
 }

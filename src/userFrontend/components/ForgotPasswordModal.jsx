@@ -39,7 +39,7 @@ const ForgotPasswordModal = ({ closeModal, openLogin }) => {
         <div className="auth-modal">
           <FaTimes className="close-icon" onClick={closeModal} />
           <div className="success-message">
-            <h2>Email Sent! ✅</h2>
+            <h2>Email Sent!</h2>
             <p>
               We sent a password reset link to <strong>{email}</strong>.
               Please check your inbox and click the link.

@@ -136,7 +136,7 @@ const Header = () => {
 
             {/* Profile Icon */}
             <div className="profile-icon-wrapper" onClick={handleProfileClick} title="Profile">
-              {user ? (
+              {!loading && user ? (
                 <div className="profile-icon-avatar">
                   {profile?.name?.charAt(0).toUpperCase() || user.email?.charAt(0).toUpperCase()}
                 </div>
@@ -148,7 +148,7 @@ const Header = () => {
           </div>
 
           {/* Show Login/Signup buttons only when not logged in */}
-          {!user && (
+          {!loading && !user && (
             <>
               <button
                 className="header-btn"
