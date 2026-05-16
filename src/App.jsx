@@ -5,14 +5,13 @@ import { Toaster } from 'react-hot-toast'
 import AdminPortal from "./admin/AdminPortal";
 import SellerPortal from "./seller/SellerPortal";
 import UserPortal from "./userFrontend/UserPortal";
-import { supabase } from "./supabase/supabase";
 
-// Separate component to use useNavigate inside BrowserRouter
 const AppRoutes = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
     window.history.scrollRestoration = "manual";
+
   }, []);
 
   return (

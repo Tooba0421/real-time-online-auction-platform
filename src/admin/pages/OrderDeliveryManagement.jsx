@@ -1,3 +1,4 @@
+import { useState, useEffect, useMemo } from "react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -10,188 +11,166 @@ import {
   Filler,
 } from "chart.js";
 import { Line, Doughnut } from "react-chartjs-2";
-import { useState, useMemo } from "react";
-import StatusBadge from "../../common/components/StatusBadge";
+import { supabase } from "../../supabase/supabase";
+import toast from "react-hot-toast";
 import StatCard from "../../common/components/StatCard";
-import ActionButton from "../../common/components/ActionButton";
+import StatusBadge from "../../common/components/StatusBadge";
 import "../styles/adminLayout.css";
 import "../styles/orderDeliveryManagement.css";
 
 ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  ArcElement,
-  Tooltip,
-  Legend,
-  Filler
+  CategoryScale, LinearScale, PointElement,
+  LineElement, ArcElement, Tooltip, Legend, Filler
 );
 
-/* ================= INITIAL DATA ================= */
-
-const initialOrders = [
-  {
-    orderId: "ORD-501",
-    auctionId: "AUC-2101",
-    orderDate: "2026-02-01",
-    buyer: "Ali Khan",
-    seller: "Sara Ahmed",
-    product: "Antique Vase",
-    amount: "$850",
-    paymentStatus: "Paid",
-    deliveryStatus: "In Transit",
-    trackingNo: "TRK-889234",
-    issue: null,
-  },
-  {
-    orderId: "ORD-502",
-    auctionId: "AUC-2102",
-    orderDate: "2026-02-02",
-    buyer: "Zain Malik",
-    seller: "Ali Khan",
-    product: "Gaming Laptop",
-    amount: "$1200",
-    paymentStatus: "Paid",
-    deliveryStatus: "Delivered",
-    trackingNo: "TRK-112390",
-    issue: null,
-  },
-  {
-    orderId: "ORD-503",
-    auctionId: "AUC-2103",
-    orderDate: "2026-02-03",
-    buyer: "Sara Ahmed",
-    seller: "Zain Malik",
-    product: "Luxury Watch",
-    amount: "$2500",
-    paymentStatus: "Paid",
-    deliveryStatus: "Delayed",
-    trackingNo: "TRK-445678",
-    issue: {
-      type: "Delivery delay",
-      status: "Open",
-    },
-  },
-];
-
 const OrderDeliveryManagement = () => {
-  const [orders, setOrders] = useState(initialOrders);
+
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
 
-  /* ================= FILTER LOGIC ================= */
-  const query = search.trim().toLowerCase();
-  const filteredOrders = orders.filter((o) => {
+  useEffect(() => {
+    fetchOrders();
+  }, []);
+
+  const fetchOrders = async () => {
+    try {
+      setLoading(true);
+
+      const { data, error } = await supabase
+        .from('orders')
+        .select(`
+          *,
+          auctions (
+            id,
+            products ( title )
+          ),
+          buyers (
+            id,
+            profiles ( name )
+          ),
+          sellers (
+            id,
+            business_name,
+            profiles ( name )
+          ),
+          payments (
+            status,
+            total_amount,
+            payment_date
+          ),
+          deliveries (
+            status,
+            tracking_no,
+            courier_service,
+            delivery_date
+          )
+        `)
+        .order('order_date', { ascending: false });
+
+      if (error) {
+        toast.error("Error fetching orders");
+        console.error(error);
+        return;
+      }
+
+      setOrders(data || []);
+
+    } catch (err) {
+      console.error(err);
+      toast.error("Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '—';
+    return new Date(dateStr).toLocaleDateString('en-PK', {
+      year: 'numeric', month: 'short', day: 'numeric'
+    });
+  };
+
+  const filteredOrders = orders.filter(order => {
+    const productTitle = order.auctions?.products?.title?.toLowerCase() || '';
+    const buyerName = order.buyers?.profiles?.name?.toLowerCase() || '';
+    const sellerName = order.sellers?.profiles?.name?.toLowerCase() || '';
+    const orderId = order.id?.toLowerCase() || '';
+    const query = search.toLowerCase();
+
     const matchesSearch =
-      o.orderId.toLowerCase().includes(query) ||
-      o.auctionId.toLowerCase().includes(query) ||
-      o.product.toLowerCase().includes(query) ||
-      o.buyer.toLowerCase().includes(query) ||
-      o.seller.toLowerCase().includes(query);
+      productTitle.includes(query) ||
+      buyerName.includes(query) ||
+      sellerName.includes(query) ||
+      orderId.includes(query);
+
+    const deliveryStatus = order.deliveries?.status || 'pending';
 
     const matchesStatus =
-      filterStatus === "all" ||
-      o.deliveryStatus.toLowerCase().replace(" ", "-") === filterStatus;
+      filterStatus === "all" || deliveryStatus === filterStatus;
 
     return matchesSearch && matchesStatus;
   });
 
-  /* ================= ORDER-FOCUSED STATS ================= */
-
+  // Stats
   const stats = useMemo(() => {
     const total = orders.length;
-    const delivered = orders.filter(o => o.deliveryStatus === "Delivered").length;
-    const transit = orders.filter(o => o.deliveryStatus === "In Transit").length;
-    const delayed = orders.filter(o => o.deliveryStatus === "Delayed").length;
+    const delivered = orders.filter(o => o.deliveries?.status === 'delivered').length;
+    const inTransit = orders.filter(o => o.deliveries?.status === 'in_transit').length;
+    const pending = orders.filter(o =>
+      !o.deliveries || o.deliveries?.status === 'pending'
+    ).length;
 
-    return { total, delivered, transit, delayed };
+    return { total, delivered, inTransit, pending };
   }, [orders]);
 
   const statsData = [
-    {
-      title: "Total Orders",
-      value: stats.total,
-      subtitle: "All recorded orders",
-    },
-    {
-      title: "Delivered",
-      value: stats.delivered,
-      subtitle: "Successfully delivered",
-    },
-    {
-      title: "In Transit",
-      value: stats.transit,
-      subtitle: "In-transit",
-    },
-    {
-      title: "Delayed",
-      value: stats.delayed,
-      subtitle: "Delivery delays",
-    },
+    { title: "Total Orders", value: loading ? "..." : stats.total, subtitle: "All recorded orders" },
+    { title: "Delivered", value: loading ? "..." : stats.delivered, subtitle: "Successfully delivered" },
+    { title: "In Transit", value: loading ? "..." : stats.inTransit, subtitle: "Currently shipping" },
+    { title: "Pending Delivery", value: loading ? "..." : stats.pending, subtitle: "Not yet shipped" },
   ];
 
-  /* ================= CHART DATA ================= */
-
+  // Monthly orders chart
   const ordersTrend = useMemo(() => {
-    const total = stats.total || 0;
+    const monthly = Array(12).fill(0);
+    orders.forEach(order => {
+      const month = new Date(order.order_date).getMonth();
+      monthly[month]++;
+    });
 
     return {
-      labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
-      datasets: [
-        {
-          label: "Orders",
-          data: [
-            total * 0.6,
-            total * 0.8,
-            total,
-            total * 1.2,
-            total * 0.9,
-            total * 0.6,
-            total * 0.8,
-            total,
-            total * 1.2,
-            total * 0.9,
-            total * 1.3,
-            total * 1.3,
-          ],
-          borderColor: "#2563EB",
-          backgroundColor: "rgba(37,99,235,0.15)",
-          fill: true,
-          tension: 0.4,
-        },
-      ],
+      labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+      datasets: [{
+        label: "Orders",
+        data: monthly,
+        borderColor: "#2563EB",
+        backgroundColor: "rgba(37,99,235,0.15)",
+        fill: true,
+        tension: 0.4,
+      }],
     };
-  }, [stats.total]);
+  }, [orders]);
 
-  const deliveryBreakdown = {
-    labels: ["Delivered", "In Transit", "Delayed"],
-    datasets: [
-      {
-        data: [stats.delivered, stats.transit, stats.delayed],
-        backgroundColor: ["#10B981", "#3B82F6", "#EF4444"],
-      },
-    ],
-  };
+  const deliveryBreakdown = useMemo(() => ({
+    labels: ["Delivered", "In Transit", "Pending"],
+    datasets: [{
+      data: [stats.delivered, stats.inTransit, stats.pending],
+      backgroundColor: ["#10B981", "#3B82F6", "#F59E0B"],
+    }],
+  }), [stats]);
 
   const doughnutOptions = {
     responsive: true,
     maintainAspectRatio: false,
     cutout: "0%",
-    layout: {
-      padding: {
-        top: 10,    // space above the chart
-        bottom: 30, // space below the chart
-      },
-    },
+    layout: { padding: { top: 10, bottom: 30 } },
     plugins: {
       legend: {
-        position: "top",
-        align: "center",
-        labels: {
-          boxWidth: 30,
-          padding: 15,
-        },
+        position: "top", align: "center",
+        labels: { boxWidth: 30, padding: 15 },
       },
     },
   };
@@ -201,174 +180,109 @@ const OrderDeliveryManagement = () => {
     maintainAspectRatio: false,
     plugins: {
       legend: {
-        position: "top",
-        align: "center",
-        labels: {
-          boxWidth: 30,
-          padding: 15,
-        },
+        position: "top", align: "center",
+        labels: { boxWidth: 30, padding: 15 },
       },
     },
-  };
-
-  /* ================= ACTIONS ================= */
-
-  const markIssueResolved = (orderId) => {
-    setOrders((prev) =>
-      prev.map((order) =>
-        order.orderId === orderId
-          ? { ...order, issue: { ...order.issue, status: "Resolved" } }
-          : order
-      )
-    );
   };
 
   return (
     <div className="admin-page">
 
-      {/* ================= STAT CARDS ================= */}
-
+      {/* STAT CARDS */}
       <div className="stats-grid">
         {statsData.map((item, index) => (
-          <StatCard
-            key={index}
-            title={item.title}
-            value={item.value}
-            subtitle={item.subtitle}
-          />
+          <StatCard key={index} title={item.title} value={item.value} subtitle={item.subtitle} />
         ))}
       </div>
 
-      {/* ================= TABLE ================= */}
+      {/* ORDERS TABLE */}
       <div className="admin-section">
-        <h3 className="admin-section-heading">Orders Overview</h3>
-
-        {/* ================= CONTROLS ================= */}
+        <h3 className="admin-section-heading">Orders & Deliveries</h3>
 
         <div className="admin-controls">
           <input
             type="text"
-            placeholder="Search Order ID, Auction ID, Product, Buyer, Seller"
+            placeholder="Search by product, buyer, seller or order ID"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-          >
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
             <option value="all">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="shipped">Shipped</option>
+            <option value="in_transit">In Transit</option>
             <option value="delivered">Delivered</option>
-            <option value="in-transit">In Transit</option>
-            <option value="delayed">Delayed</option>
+            <option value="failed">Failed</option>
           </select>
         </div>
 
-
-        <div className="table-wrapper">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Order ID</th>
-                <th>Auction ID</th>
-                <th>Date</th>
-                <th>Product</th>
-                <th>Buyer</th>
-                <th>Seller</th>
-                <th>Amount</th>
-                <th>Payment</th>
-                <th>Delivery</th>
-                <th>Tracking</th>
-                <th>Issue</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {filteredOrders.length === 0 ? (
+        {loading ? (
+          <div className="loading-state">Loading orders...</div>
+        ) : (
+          <div className="table-wrapper">
+            <table className="admin-table">
+              <thead>
                 <tr>
-                  <td colSpan="12" className="no-data">
-                    No orders
-                  </td>
+                  <th>Product</th>
+                  <th>Buyer</th>
+                  <th>Seller</th>
+                  <th>Amount</th>
+                  <th>Service Tax</th>
+                  <th>Total</th>
+                  <th>Payment</th>
+                  <th>Order Status</th>
+                  <th>Delivery Status</th>
+                  <th>Courier</th>
+                  <th>Tracking No</th>
+                  <th>Order Date</th>
                 </tr>
-              ) : (
-                filteredOrders.map((order) => (
-                  <tr key={order.orderId}>
-                    <td>{order.orderId}</td>
-                    <td>{order.auctionId}</td>
-                    <td>{new Date(order.orderDate).toLocaleDateString()}</td>
-                    <td>{order.product}</td>
-                    <td>{order.buyer}</td>
-                    <td>{order.seller}</td>
-                    <td>{order.amount}</td>
-
-                    <td>
-                      <StatusBadge
-                        label={order.paymentStatus}
-                        type={order.paymentStatus.toLowerCase()}
-                      />
-                    </td>
-
-                    <td>
-                      <StatusBadge
-                        label={order.deliveryStatus}
-                        type={order.deliveryStatus
-                          .toLowerCase()
-                          .replace(" ", "-")}
-                      />
-                    </td>
-
-                    <td>{order.trackingNo}</td>
-
-                    <td>
-                      {order.issue ? (
-                        <StatusBadge
-                          label={`${order.issue.type} (${order.issue.status})`}
-                          type={
-                            order.issue.status === "Open"
-                              ? "danger"
-                              : "approved"
-                          }
-                        />
-                      ) : (
-                        <StatusBadge label="No Issue" type="approved" />
-                      )}
-                    </td>
-
-                    <td>
-                      <div className="actions">
-                        {order.issue &&
-                          order.issue.status === "Open" && (
-                            <ActionButton
-                              label="Resolve"
-                              variant="success"
-                              onClick={() =>
-                                markIssueResolved(order.orderId)
-                              }
-                            />
-                          )}
-
-                        <ActionButton
-                          label="View"
-                          variant="secondary"
-                          onClick={() =>
-                            alert(`Viewing ${order.orderId}`)
-                          }
-                        />
-                      </div>
-                    </td>
+              </thead>
+              <tbody>
+                {filteredOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan="12" className="empty-row">No orders found</td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  filteredOrders.map(order => (
+                    <tr key={order.id}>
+                      <td>{order.auctions?.products?.title || '—'}</td>
+                      <td>{order.buyers?.profiles?.name || '—'}</td>
+                      <td>{order.sellers?.profiles?.name || '—'}</td>
+                      <td>PKR {order.amount?.toLocaleString()}</td>
+                      <td>PKR {order.service_tax?.toLocaleString()}</td>
+                      <td>PKR {order.total_amount?.toLocaleString()}</td>
+                      <td>
+                        <StatusBadge
+                          label={order.payments?.status || 'pending'}
+                          type={order.payments?.status || 'pending'}
+                        />
+                      </td>
+                      <td>
+                        <StatusBadge
+                          label={order.order_status}
+                          type={order.order_status}
+                        />
+                      </td>
+                      <td>
+                        <StatusBadge
+                          label={order.deliveries?.status || 'pending'}
+                          type={order.deliveries?.status || 'pending'}
+                        />
+                      </td>
+                      <td>{order.deliveries?.courier_service || '—'}</td>
+                      <td>{order.deliveries?.tracking_no || '—'}</td>
+                      <td>{formatDate(order.order_date)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* ================= ORDER ANALYTICS ================= */}
-
-
-
+      {/* CHARTS */}
       <div className="overview-grid">
         <div className="chart-box">
           <h3 className="admin-section-heading">Orders Trend</h3>
@@ -376,7 +290,6 @@ const OrderDeliveryManagement = () => {
             <Line data={ordersTrend} options={lineOptions} />
           </div>
         </div>
-
         <div className="chart-box">
           <h3 className="admin-section-heading">Delivery Status Breakdown</h3>
           <div className="chart-container">
@@ -384,6 +297,7 @@ const OrderDeliveryManagement = () => {
           </div>
         </div>
       </div>
+
     </div>
   );
 };

@@ -33,84 +33,74 @@ const SignupModal = ({ closeModal, openLogin }) => {
     try {
       setLoading(true);
 
-      // 1. Generate OTP FIRST
+      // Step 1: Generate and send OTP FIRST (before creating account)
       const otp = generateOTP();
-
-      // 2. Store OTP
       storeOTP(email, otp);
 
-      // 3. Send OTP email
       const emailResult = await sendOTPEmail(email, name, otp);
-
       if (!emailResult.success) {
-        toast.error("Failed to send OTP email");
+        toast.error("Failed to send OTP email. Please try again.");
         return;
       }
 
+      // Step 2: Store signup data temporarily (only in memory via sessionStorage)
+      sessionStorage.setItem("pending_signup", JSON.stringify({ name, email, password }));
+
       toast.success("OTP sent to your email!");
-
-      // 4. Save temp signup data (IMPORTANT)
-      sessionStorage.setItem("pending_signup", JSON.stringify({
-        name,
-        email,
-        password
-      }));
-
-      // 5. Show OTP modal
       setRegisteredEmail(email);
       setShowOTP(true);
 
     } catch (error) {
       console.error(error);
-      toast.error(error.message);
+      toast.error("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleVerified = async () => {
-  try {
-
-    const pending = JSON.parse(sessionStorage.getItem("pending_signup"));
-
-    if (!pending) {
-      toast.error("Signup data not found");
-      return;
-    }
-
-    const { name, email, password } = pending;
-
-    // NOW create user in Supabase (ONLY AFTER OTP SUCCESS)
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { name }
+    try {
+      const raw = sessionStorage.getItem("pending_signup");
+      if (!raw) {
+        toast.error("Signup session expired. Please try again.");
+        return;
       }
-    });
 
-    if (error) {
-      toast.error(error.message);
-      return;
+      const { name, email, password } = JSON.parse(raw);
+
+      // ✅ Create Supabase account ONLY after OTP verified
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { name } }
+      });
+
+      // ✅ Always clear sessionStorage after use
+      sessionStorage.removeItem("pending_signup");
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      toast.success("Account created and verified successfully!");
+      closeModal();
+
+    } catch (err) {
+      console.error(err);
+      sessionStorage.removeItem("pending_signup");
+      toast.error("Something went wrong. Please try again.");
     }
-
-    sessionStorage.removeItem("pending_signup");
-
-    toast.success("Account created successfully!");
-
-    closeModal();
-
-  } catch (err) {
-    console.error(err);
-    toast.error("Something went wrong");
-  }
-};
+  };
 
   if (showOTP) {
     return (
       <OTPVerificationModal
         email={registeredEmail}
-        closeModal={() => setShowOTP(false)}
+        closeModal={() => {
+          setShowOTP(false);
+          sessionStorage.removeItem("pending_signup");
+        }}
         onVerified={handleVerified}
       />
     );
@@ -125,7 +115,6 @@ const SignupModal = ({ closeModal, openLogin }) => {
         <h2>Create Account</h2>
 
         <form className="auth-form" onSubmit={handleSignup}>
-
           <input
             className="auth-input"
             type="text"
@@ -133,7 +122,6 @@ const SignupModal = ({ closeModal, openLogin }) => {
             required
             onChange={(e) => setName(e.target.value)}
           />
-
           <input
             className="auth-input"
             type="email"
@@ -141,7 +129,6 @@ const SignupModal = ({ closeModal, openLogin }) => {
             required
             onChange={(e) => setEmail(e.target.value)}
           />
-
           <input
             className="auth-input"
             type="password"
@@ -149,7 +136,6 @@ const SignupModal = ({ closeModal, openLogin }) => {
             required
             onChange={(e) => setPassword(e.target.value)}
           />
-
           <input
             className="auth-input"
             type="password"
@@ -157,11 +143,9 @@ const SignupModal = ({ closeModal, openLogin }) => {
             required
             onChange={(e) => setConfirmPassword(e.target.value)}
           />
-
           <button className="auth-btn" disabled={loading}>
-            {loading ? "Creating Account..." : "Sign Up"}
+            {loading ? "Processing..." : "Continue"}
           </button>
-
         </form>
 
         <p className="switch-text">

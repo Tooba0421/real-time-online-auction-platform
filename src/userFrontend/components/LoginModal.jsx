@@ -26,9 +26,10 @@ const LoginModal = ({ closeModal, openSignup, openForgotPassword }) => {
         return;
       }
 
-      console.log("Logged in successfully:", data.user);
-      toast.success("Logged in successfully!");
-      closeModal();
+      if (!error) {
+        toast.success("Logged in successfully!");
+        closeModal();
+      }
 
     } catch (error) {
       console.error(error.message);

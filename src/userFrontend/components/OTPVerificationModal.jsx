@@ -10,9 +10,12 @@ const OTPVerificationModal = ({ email, closeModal, onVerified }) => {
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
+  const [verified, setVerified] = useState(false); // 🔥 prevent double submit
 
   const handleVerify = async (e) => {
     e.preventDefault();
+
+    if (loading || verified) return; // 🔥 prevent double clicks
 
     if (otp.length !== 6) {
       toast.error("Please enter a valid 6-digit code");
@@ -22,7 +25,6 @@ const OTPVerificationModal = ({ email, closeModal, onVerified }) => {
     try {
       setLoading(true);
 
-      // Verify OTP locally
       const result = verifyOTP(otp);
 
       if (!result.valid) {
@@ -31,7 +33,10 @@ const OTPVerificationModal = ({ email, closeModal, onVerified }) => {
       }
 
       toast.success("Email verified successfully!");
-      onVerified();
+
+      setVerified(true); // 🔥 lock modal
+
+      await onVerified(); // ensure async safety
 
     } catch (err) {
       console.error(err);
@@ -42,16 +47,16 @@ const OTPVerificationModal = ({ email, closeModal, onVerified }) => {
   };
 
   const handleResend = async () => {
+
+    if (resending) return;
+
     try {
       setResending(true);
 
-      // Generate new OTP
       const newOtp = generateOTP();
 
-      // Store new OTP
       storeOTP(email, newOtp);
 
-      // Send new OTP via EmailJS
       const result = await sendOTPEmail(email, '', newOtp);
 
       if (!result.success) {
@@ -60,6 +65,8 @@ const OTPVerificationModal = ({ email, closeModal, onVerified }) => {
       }
 
       toast.success("New OTP sent! Check your email.");
+
+      setOtp(""); // 🔥 clear input on resend
 
     } catch (err) {
       console.error(err);
@@ -76,6 +83,7 @@ const OTPVerificationModal = ({ email, closeModal, onVerified }) => {
         <FaTimes className="close-icon" onClick={closeModal} />
 
         <h2>Verify Your Email</h2>
+
         <p className="auth-subtitle">
           We sent a 6-digit code to <strong>{email}</strong>
         </p>
@@ -88,6 +96,7 @@ const OTPVerificationModal = ({ email, closeModal, onVerified }) => {
             placeholder="Enter 6-digit code"
             maxLength={6}
             value={otp}
+            disabled={loading || verified}  // 🔥 lock after success
             onChange={(e) => {
               const val = e.target.value.replace(/[^0-9]/g, '');
               setOtp(val);
@@ -95,14 +104,18 @@ const OTPVerificationModal = ({ email, closeModal, onVerified }) => {
             required
           />
 
-          <button className="auth-btn" disabled={loading}>
-            {loading ? "Verifying..." : "Verify Email"}
+          <button
+            className="auth-btn"
+            disabled={loading || verified}
+          >
+            {loading ? "Verifying..." : verified ? "Verified" : "Verify Email"}
           </button>
 
         </form>
 
         <p className="switch-text">
           Didn't receive the code?
+
           <span
             onClick={handleResend}
             style={{

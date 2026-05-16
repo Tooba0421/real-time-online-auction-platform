@@ -9,20 +9,41 @@ const ResetPasswordPage = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-
     const checkRecoverySession = async () => {
-
       try {
+        // ✅ Wait briefly for Supabase to process the token
+        await new Promise(resolve => setTimeout(resolve, 800));
 
-        const {
-          data: { session }
-        } = await supabase.auth.getSession();
+        // ✅ Check current session first
+        const { data: { session } } = await supabase.auth.getSession();
 
         if (session?.user) {
           setStatus("valid");
-        } else {
-          setStatus("invalid");
+          return;
         }
+
+        // ✅ Try from saved hash in sessionStorage (captured in index.html)
+        const savedHash = sessionStorage.getItem('recovery_hash');
+        if (savedHash && savedHash.includes('type=recovery')) {
+          const params = new URLSearchParams(savedHash.substring(1));
+          const accessToken = params.get('access_token');
+          const refreshToken = params.get('refresh_token');
+
+          if (accessToken && refreshToken) {
+            const { data } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken
+            });
+
+            if (data?.session) {
+              sessionStorage.removeItem('recovery_hash');
+              setStatus("valid");
+              return;
+            }
+          }
+        }
+
+        setStatus("invalid");
 
       } catch (err) {
         console.error(err);
@@ -31,25 +52,23 @@ const ResetPasswordPage = () => {
     };
 
     checkRecoverySession();
-
   }, []);
 
   const handleClose = async () => {
     await supabase.auth.signOut();
+    sessionStorage.removeItem('recovery_hash');
     navigate("/");
   };
 
   if (status === "loading") {
     return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "100vh",
-          fontFamily: "system-ui"
-        }}
-      >
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        height: "100vh",
+        fontFamily: "system-ui"
+      }}>
         <p>Verifying your reset link...</p>
       </div>
     );

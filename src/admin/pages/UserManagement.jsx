@@ -14,6 +14,7 @@ import "../styles/adminLayout.css";
 import "../styles/userManagement.css";
 import StatusBadge from "../../common/components/StatusBadge";
 import StatCard from "../../common/components/StatCard";
+import ActionButton from "../../common/components/ActionButton";
 
 ChartJS.register(
   CategoryScale,
@@ -290,7 +291,6 @@ const UserManagement = () => {
                   <th>ID Verified</th>
                   <th>Status</th>
                   <th>Registration Date</th>
-                  <th>Action</th>
                 </tr>
               </thead>
 
@@ -338,22 +338,7 @@ const UserManagement = () => {
 
                       <td>{formatDate(user.join_date)}</td>
 
-                      <td>
-                        {user.role !== 'admin' && (
-                          <button
-                            className={`action-btn ${user.status === 'active' ? 'btn-suspend' : 'btn-activate'}`}
-                            onClick={() => handleToggleStatus(user.id, user.status)}
-                            disabled={suspending === user.id}
-                          >
-                            {suspending === user.id
-                              ? 'Processing...'
-                              : user.status === 'active'
-                                ? 'Suspend'
-                                : 'Activate'
-                            }
-                          </button>
-                        )}
-                      </td>
+          
                     </tr>
                   ))
                 )}

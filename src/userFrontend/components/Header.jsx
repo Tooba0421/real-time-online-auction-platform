@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FaArrowLeft, FaUser } from "react-icons/fa";
+import { FaArrowLeft } from "react-icons/fa";
 import { useFavorites } from "../components/FavoritesContext";
 import { products } from "../data/products";
 import "../styles/header.css";
@@ -24,7 +24,6 @@ const Header = () => {
   const [showMenu, setShowMenu] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
 
-  // ✅ Use AuthContext instead of local auth state
   const { user, profile, loading } = useAuthContext();
 
   useEffect(() => {
@@ -51,15 +50,14 @@ const Header = () => {
   const goToNotifications = () => navigate("/notifications");
   const goToCategory = (category) => navigate(`/category/${encodeURIComponent(category)}`);
 
-  const handleProfileClick = () => {
-    if (loading) return;
-    if (user) {
-      navigate("/profile");
-      setShowMenu(false);
-    } else {
-      setShowLogin(true);
-    }
+  // ✅ Get avatar letter — works even during loading
+  const getAvatarLetter = () => {
+    if (profile?.name) return profile.name.charAt(0).toUpperCase();
+    if (user?.email) return user.email.charAt(0).toUpperCase();
+    return null;
   };
+
+  const avatarLetter = getAvatarLetter();
 
   return (
     <>
@@ -93,6 +91,7 @@ const Header = () => {
         <div className="header-actions">
           <div className="icons">
 
+            {/* Favorites */}
             <div className="fav-wrapper" ref={dropdownRef}>
               <FaHeart
                 className="header-icon"
@@ -132,22 +131,24 @@ const Header = () => {
               )}
             </div>
 
+            {/* Notifications */}
             <FaBell className="header-icon" onClick={goToNotifications} />
 
-            {/* Profile Icon */}
-            <div className="profile-icon-wrapper" onClick={handleProfileClick} title="Profile">
-              {!loading && user ? (
-                <div className="profile-icon-avatar">
-                  {profile?.name?.charAt(0).toUpperCase() || user.email?.charAt(0).toUpperCase()}
-                </div>
-              ) : (
-                <FaUser className="header-icon profile-icon" />
-              )}
-            </div>
+            {/* ✅ Avatar — always visible when user exists, no flicker */}
+            {user && avatarLetter && (
+              <div
+                className="profile-icon-avatar"
+                onClick={() => navigate("/profile")}
+                title="My Profile"
+                style={{ cursor: 'pointer' }}
+              >
+                {avatarLetter}
+              </div>
+            )}
 
           </div>
 
-          {/* Show Login/Signup buttons only when not logged in */}
+          {/* ✅ Show Login/Signup only when NOT loading and NOT logged in */}
           {!loading && !user && (
             <>
               <button
@@ -170,12 +171,16 @@ const Header = () => {
       </header>
 
       {/* OVERLAY */}
-      {showMenu && <div className="sidebar-overlay" onClick={() => setShowMenu(false)}></div>}
+      {showMenu && (
+        <div className="sidebar-overlay" onClick={() => setShowMenu(false)} />
+      )}
 
-      {/* NAV / SIDEBAR */}
+      {/* SIDEBAR */}
       <nav className={`navBar ${showMenu ? "active" : ""}`}>
-        <div className="sidebar-header">
-          <p className="back-btn" onClick={() => setShowMenu(false)}><FaArrowLeft /></p>
+        <div className="user-sidebar-header">
+          <p className="back-btn" onClick={() => setShowMenu(false)}>
+            <FaArrowLeft />
+          </p>
           <h3>Menu</h3>
         </div>
         <span onClick={() => { goToHome(); setShowMenu(false); }}>Home</span>
@@ -221,40 +226,26 @@ const Header = () => {
         <span onClick={() => { navigate("/how-to-bid"); setShowMenu(false); }}>How to Bid</span>
       </nav>
 
-      {/* LOGIN MODAL */}
+      {/* MODALS */}
       {showLogin && (
         <LoginModal
           closeModal={() => setShowLogin(false)}
-          openSignup={() => {
-            setShowLogin(false);
-            setShowSignup(true);
-          }}
-          openForgotPassword={() => {
-            setShowLogin(false);
-            setShowForgotPassword(true);
-          }}
+          openSignup={() => { setShowLogin(false); setShowSignup(true); }}
+          openForgotPassword={() => { setShowLogin(false); setShowForgotPassword(true); }}
         />
       )}
 
-      {/* SIGNUP MODAL */}
       {showSignup && (
         <SignupModal
           closeModal={() => setShowSignup(false)}
-          openLogin={() => {
-            setShowSignup(false);
-            setShowLogin(true);
-          }}
+          openLogin={() => { setShowSignup(false); setShowLogin(true); }}
         />
       )}
 
-      {/* FORGOT PASSWORD MODAL */}
       {showForgotPassword && (
         <ForgotPasswordModal
           closeModal={() => setShowForgotPassword(false)}
-          openLogin={() => {
-            setShowForgotPassword(false);
-            setShowLogin(true);
-          }}
+          openLogin={() => { setShowForgotPassword(false); setShowLogin(true); }}
         />
       )}
     </>

@@ -134,7 +134,7 @@
 .icons {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: space-evenly;
   cursor: pointer;
   padding: 6px 10px;
   width: 8rem;
@@ -353,7 +353,7 @@
   }
 }
 
-.sidebar-header,
+.user-sidebar-header,
 .mobile-search-icon,
 .mobile-category{
   display: none;
@@ -547,7 +547,7 @@
 }
 
 /* HEADER */
-.sidebar-header {
+.user-sidebar-header {
   width: 100%;
   display: flex;
   /* justify-content: space-between; */
@@ -557,7 +557,7 @@
   margin: 0;
 }
 
-.sidebar-header h3 {
+.user-sidebar-header h3 {
   font-size: 18px;
 }
 
