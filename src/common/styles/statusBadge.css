@@ -20,18 +20,19 @@
 
 /* Scheduled - Royal Blue */
 .status-badge.scheduled{
-background: rgba(37, 99, 235, 0.15);
-color: #2563EB;
+  background: rgba(37, 99, 235, 0.15);
+  color: #2563EB;
 }
 
 /* Ended / Default - Neutral Gray */
-.status-badge.ended,
 .status-badge.not_submitted,
+.status-badge.ended,
 .status-badge.default, 
 .status-badge.holding,
 .status-badge.closed,
 .status-badge.unsold,
-.status-badge.cancelled {
+.status-badge.cancelled,
+.status-badge.user {
   background: rgba(107, 114, 128, 0.2);
   color: #374151;
 }
@@ -42,7 +43,8 @@ color: #2563EB;
 .status-badge.paid, 
 .status-badge.sold, 
 .status-badge.in-transit, 
-.status-badge.delivered {
+.status-badge.delivered,
+.status-badge.seller {
   background: rgba(16, 185, 129, 0.15);
   color: #10B981;
 }
@@ -59,13 +61,15 @@ color: #2563EB;
 .status-badge.rejected,
 .status-badge.suspended, 
 .status-badge.danger, 
-.status-badge.failed {
+.status-badge.failed,
+.status-badge.admin {
   background: rgba(239, 68, 68, 0.15);
   color: #991B1B;
 }
 
 /* Active - Royal Blue */
-.status-badge.active {
+.status-badge.active,
+.status-badge.buyer {
   background-color: rgba(37, 99, 235, 0.15);
   color: #1E40AF;
 }

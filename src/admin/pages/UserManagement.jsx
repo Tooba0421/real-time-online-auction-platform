@@ -307,24 +307,25 @@ const UserManagement = () => {
                       <td>{user.name || '—'}</td>
                       <td>{user.email || '—'}</td>
                       <td>
-                        <span className="role-badge">
-                          {getRoleLabel(user.role)}
-                        </span>
+                        <StatusBadge
+                          label={getRoleLabel(user.role)}
+                          type={user.role?.toLowerCase()}
+                        />
                       </td>
 
                       <td>
                         <StatusBadge
                           label={
                             user.id_verified === 'approved' ? 'Verified' :
-                            user.id_verified === 'pending' ? 'Pending' :
-                            user.id_verified === 'rejected' ? 'Rejected' :
-                            'Not Submitted'
+                              user.id_verified === 'pending' ? 'Pending' :
+                                user.id_verified === 'rejected' ? 'Rejected' :
+                                  'Not Submitted'
                           }
                           type={
                             user.id_verified === 'approved' ? 'approved' :
-                            user.id_verified === 'pending' ? 'pending' :
-                            user.id_verified === 'rejected' ? 'rejected' :
-                            'inactive'
+                              user.id_verified === 'pending' ? 'pending' :
+                                user.id_verified === 'rejected' ? 'rejected' :
+                                  'not_submitted'
                           }
                         />
                       </td>
@@ -338,7 +339,7 @@ const UserManagement = () => {
 
                       <td>{formatDate(user.join_date)}</td>
 
-          
+
                     </tr>
                   ))
                 )}

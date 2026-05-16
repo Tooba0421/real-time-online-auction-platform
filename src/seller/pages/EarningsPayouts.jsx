@@ -1,214 +1,211 @@
-import { useState, useMemo } from "react";
-import "../styles/sellerLayout.css"; // ✅ Reusing same styles
-import "../styles/earningsPayouts.css";
-
+import { useState, useEffect, useMemo } from "react";
+import { supabase } from "../../supabase/supabase";
+import { useAuthContext } from "../../context/AuthContext";
 import StatCard from "../../common/components/StatCard";
 import StatusBadge from "../../common/components/StatusBadge";
+import "../styles/sellerLayout.css";
+import "../styles/earningsPayouts.css";
 
-/* ===== Constants ===== */
-const COMMISSION_RATE = 0.05;
-
-/* ===== Sample Transactions ===== */
-const transactionsData = [
-  {
-    id: "TXN-101",
-    auctionId: "AUC-201",
-    item: "Vintage Clock",
-    winningBid: 500,
-    deliveryStatus: "delivered",
-    paymentStatus: "released",
-    payoutStatus: "paid",
-    date: "2026-01-15",
-  },
-  {
-    id: "TXN-102",
-    auctionId: "AUC-202",
-    item: "Antique Vase",
-    winningBid: 800,
-    deliveryStatus: "pending",
-    paymentStatus: "holding",
-    payoutStatus: "processing",
-    date: "2026-01-18",
-  },
-  {
-    id: "TXN-103",
-    auctionId: "AUC-203",
-    item: "Luxury Sofa",
-    winningBid: 1200,
-    deliveryStatus: "delivered",
-    paymentStatus: "released",
-    payoutStatus: "scheduled",
-    date: "2026-01-20",
-  },
-];
+const COMMISSION_RATE = 0.25; // 25%
 
 const EarningsPayouts = () => {
-  const [transactions] = useState(transactionsData);
+
+  const { user } = useAuthContext();
+
+  const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
 
-  /* ===== Calculate Commission & Net ===== */
-  const calculatedTransactions = useMemo(() => {
-    return transactions.map((t) => {
-      const commission = t.winningBid * COMMISSION_RATE;
-      const net = t.winningBid - commission;
+  useEffect(() => {
+    if (!user) return;
+    fetchTransactions();
+  }, [user]);
 
-      return { ...t, commission, net };
-    });
+  const fetchTransactions = async () => {
+    try {
+      setLoading(true);
+
+      // Get seller id
+      const { data: sellerData } = await supabase
+        .from('sellers')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (!sellerData) return;
+
+      const { data, error } = await supabase
+        .from('transactions')
+        .select(`
+          *,
+          payments (
+            id,
+            total_amount,
+            platform_fee,
+            status,
+            payment_date,
+            orders (
+              id,
+              auctions (
+                id,
+                products ( title )
+              )
+            )
+          )
+        `)
+        .eq('seller_id', sellerData.id)
+        .order('release_date', { ascending: false });
+
+      if (error) {
+        console.error(error);
+        return;
+      }
+
+      setTransactions(data || []);
+
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredTransactions = transactions.filter(t => {
+    const productTitle = t.payments?.orders?.auctions?.products?.title?.toLowerCase() || '';
+    const orderId = t.payments?.orders?.id?.toLowerCase() || '';
+    const query = search.toLowerCase();
+
+    const matchesSearch =
+      productTitle.includes(query) ||
+      orderId.includes(query) ||
+      t.id.toLowerCase().includes(query);
+
+    const matchesStatus =
+      filterStatus === "all" || t.status === filterStatus;
+
+    return matchesSearch && matchesStatus;
+  });
+
+  // Stats
+  const stats = useMemo(() => {
+    const totalRevenue = transactions.reduce((sum, t) => sum + (t.total_amount || 0), 0);
+    const totalEarnings = transactions.reduce((sum, t) => sum + (t.seller_amount || 0), 0);
+    const totalCommission = transactions.reduce((sum, t) => sum + (t.payments?.platform_fee || 0), 0);
+    const pendingPayout = transactions
+      .filter(t => t.status === 'onhold')
+      .reduce((sum, t) => sum + (t.seller_amount || 0), 0);
+    const releasedPayout = transactions
+      .filter(t => t.status === 'released')
+      .reduce((sum, t) => sum + (t.seller_amount || 0), 0);
+
+    return { totalRevenue, totalEarnings, totalCommission, pendingPayout, releasedPayout };
   }, [transactions]);
-
-  /* ===== Simplified Payout Status ===== */
-const simplifiedStatus = (status) => {
-  return status === "paid" ? "Paid" : "Pending";
-};
-
-/* ===== Search + Filter Logic ===== */
-const filteredTransactions = calculatedTransactions.filter((t) => {
-  const matchesSearch =
-    t.auctionId.toLowerCase().includes(search.toLowerCase()) ||
-    t.item.toLowerCase().includes(search.toLowerCase()) ||
-    t.id.toLowerCase().includes(search.toLowerCase());
-
-  const matchesStatus =
-    filterStatus === "all" || simplifiedStatus(t.payoutStatus).toLowerCase() === filterStatus;
-
-  return matchesSearch && matchesStatus;
-});
-
-  /* ===== Connected Stats (Based on Filtered Data) ===== */
-
-  const totalNet = calculatedTransactions.reduce(
-    (acc, t) => acc + t.net,
-    0
-  );
-  const totalSales = calculatedTransactions.reduce(
-    (acc, t) => acc + t.winningBid,
-    0
-  );
-
-  const completedTransactions = calculatedTransactions.filter(
-    (t) => t.payoutStatus === "paid"
-  ).length;
-
-  const totalPaid = calculatedTransactions
-    .filter((t) => t.payoutStatus === "paid")
-    .reduce((acc, t) => acc + t.net, 0);
-
-  const totalCommission = filteredTransactions.reduce(
-    (acc, t) => acc + t.commission,
-    0
-  );
 
   const statsData = [
     {
       title: "Total Sales",
-      value: `PKR ${totalSales.toFixed(2).toLocaleString()}`,
-      subtitle: "Gross revenue before commission",
+      value: loading ? "..." : `PKR ${stats.totalRevenue.toLocaleString()}`,
+      subtitle: "Gross revenue before commission"
     },
     {
       title: "Total Net Earnings",
-      value: `PKR ${totalNet.toFixed(2).toLocaleString()}`,
-      subtitle: "Earnings after platform fee",
+      value: loading ? "..." : `PKR ${stats.totalEarnings.toLocaleString()}`,
+      subtitle: "After 25% platform fee"
     },
     {
-      title: "Total Paid to You",
-      value: `PKR ${totalPaid.toFixed(2).toLocaleString()}`,
-      subtitle: "Amount successfully received",
+      title: "Released to You",
+      value: loading ? "..." : `PKR ${stats.releasedPayout.toLocaleString()}`,
+      subtitle: "Successfully paid out"
     },
     {
-      title: "Completed Transactions",
-      value: completedTransactions,
-      subtitle: "Successfully paid sales",
+      title: "Pending Payout",
+      value: loading ? "..." : `PKR ${stats.pendingPayout.toLocaleString()}`,
+      subtitle: "Currently on hold"
     },
     {
       title: "Commission Paid",
-      value: `PKR ${totalCommission.toFixed(2).toLocaleString()}`,
-      subtitle: `Platform fee (${COMMISSION_RATE * 100}%)`,
+      value: loading ? "..." : `PKR ${stats.totalCommission.toLocaleString()}`,
+      subtitle: "25% platform fee"
     },
   ];
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '—';
+    return new Date(dateStr).toLocaleDateString('en-PK', {
+      year: 'numeric', month: 'short', day: 'numeric'
+    });
+  };
 
   return (
     <div className="seller-page">
 
-      {/* ===== Stats Cards ===== */}
       <div className="stats-grid">
         {statsData.map((item, index) => (
-          <StatCard
-            key={index}
-            title={item.title}
-            value={item.value}
-            subtitle={item.subtitle}
-          />
+          <StatCard key={index} title={item.title} value={item.value} subtitle={item.subtitle} />
         ))}
       </div>
 
-      {/* ===== Table ===== */}
       <div className="seller-section">
         <h3 className="seller-section-heading">Transactions & Payout History</h3>
 
-        {/* ===== (Search + Filter) ===== */}
         <div className="page-controls">
           <input
             type="text"
-            placeholder="Search by Auction ID, Item, or Transaction ID"
+            placeholder="Search by product, order ID or transaction ID"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-          >
-            <option value="all">Payout Status</option>
-            <option value="paid">Paid</option>
-            <option value="pending">Pending</option>
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+            <option value="all">All Status</option>
+            <option value="onhold">On Hold</option>
+            <option value="released">Released</option>
           </select>
         </div>
 
-        <div className="table-wrapper">
-          <table className="seller-table">
-            <thead>
-              <tr>
-                <th>Transaction ID</th>
-                <th>Auction ID</th>
-                <th>Item</th>
-                <th>Winning Bid</th>
-                <th>Commission</th>
-                <th>Net Earnings</th>
-                <th>Payout Status</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {filteredTransactions.length === 0 ? (
+        {loading ? (
+          <div className="loading-state">Loading transactions...</div>
+        ) : (
+          <div className="table-wrapper">
+            <table className="seller-table">
+              <thead>
                 <tr>
-                  <td colSpan="7" className="no-data">
-                    No transactions found
-                  </td>
+                  <th>Product</th>
+                  <th>Total Sale</th>
+                  <th>Platform Fee (25%)</th>
+                  <th>Your Earnings</th>
+                  <th>Payment Date</th>
+                  <th>Hold Until</th>
+                  <th>Payout Status</th>
                 </tr>
-              ) : (
-                filteredTransactions.map((t) => (
-                  <tr key={t.id}>
-                    <td>{t.id}</td>
-                    <td>{t.auctionId}</td>
-                    <td>{t.item}</td>
-                    <td>{t.winningBid.toFixed(2).toLocaleString()}</td>
-                    <td>{t.commission.toFixed(2).toLocaleString()}</td>
-                    <td>
-                      {t.net.toFixed(2).toLocaleString()}
-                    </td>
-                    <td>
-                      <StatusBadge
-                        label={simplifiedStatus(t.payoutStatus)}
-                        type={simplifiedStatus(t.payoutStatus).toLowerCase()}
-                      />
-                    </td>
+              </thead>
+              <tbody>
+                {filteredTransactions.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="no-data">No transactions found</td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  filteredTransactions.map(t => (
+                    <tr key={t.id}>
+                      <td>{t.payments?.orders?.auctions?.products?.title || '—'}</td>
+                      <td>PKR {t.total_amount?.toLocaleString() || 0}</td>
+                      <td>PKR {t.payments?.platform_fee?.toLocaleString() || 0}</td>
+                      <td>PKR {t.seller_amount?.toLocaleString() || 0}</td>
+                      <td>{formatDate(t.payments?.payment_date)}</td>
+                      <td>{formatDate(t.hold_until)}</td>
+                      <td>
+                        <StatusBadge
+                          label={t.status === 'released' ? 'Released' : 'On Hold'}
+                          type={t.status === 'released' ? 'approved' : 'pending'}
+                        />
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
