@@ -3,7 +3,7 @@
   border-radius: 0.5rem;
   font-size: 0.8rem;
   font-weight: 500;
-  background-color: #E5E7EB;
+  background-color: var(--color-border);
   display: inline-block;
 }
 

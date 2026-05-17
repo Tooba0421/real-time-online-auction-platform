@@ -1,7 +1,6 @@
 /* ================= ADMIN PAGE WRAPPER ================= */
 .admin-page {
   padding: 0.5rem 1.5rem;
-  font-family: "Inter", sans-serif;
   background: #f7f9fc;
   border-radius: 0.8rem;
   margin-bottom: 1rem;
@@ -9,7 +8,7 @@
 
 /* ================= ADMIN SECTION CARD ================= */
 .admin-section {
-  background: #ffffff;
+  background: var(--color-card);
   border-radius: 0.6rem;
   padding: 1.5rem;
   box-shadow: 0 8px 20px rgba(17, 24, 39, 0.05);
@@ -45,21 +44,21 @@
   border-radius: 0.5rem;
   border: 1px solid #dee2e6;
   font-size: 0.85rem;
-  background: #fff;
-  color: #111827;
+  background: var(--color-card);
+  color: var(--color-text-primary);
   outline: none;
   transition: 0.2s;
 }
 
 .admin-controls input:focus,
 .admin-controls select:focus {
-  border: 1px solid #9b9b9b;
+  border: 1px solid var(--color-hover);
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
 }
 
 /* ================= TABLE WRAPPER ================= */
 .table-wrapper {
-  background: #ffffff;
+  background: var(--color-card);
   border-radius: 0.75rem;
   box-shadow: 0 0.3rem 1rem rgba(17, 24, 39, 0.08);
   overflow-x: auto;
@@ -71,7 +70,7 @@
 }
 
 .table-wrapper::-webkit-scrollbar-thumb {
-  background-color: #D4AF37;
+  background-color: var(--color-gold);
   border-radius: 0.3rem;
 }
 
@@ -84,14 +83,14 @@
 }
 
 .admin-table thead {
-  background-color: #F9FAFB;
+  background-color: var(--color-bg);
 }
 
 .admin-table th,
 .admin-table td {
   padding: 0.8rem 1rem;
   font-size: 0.85rem;
-  border-bottom: 0.05rem solid #e5e7eb;
+  border-bottom: 0.05rem solid var(--color-border);
   white-space: nowrap;
 }
 
@@ -108,7 +107,7 @@
 .no-data {
   text-align: center;
   padding: 1rem;
-  color: #6B7280;
+  color: var(--color-text-muted);
 }
 
 /* ===== View Image Link ===== */
@@ -138,7 +137,7 @@
 /* Chart Box inside admin-section */
 
 .chart-box {
-  background: #ffffff;
+  background: var(--color-card);
   border-radius: 1rem;
   padding: 1rem;
   box-shadow: 0 0.5rem 1.5rem rgba(17, 24, 39, 0.08);

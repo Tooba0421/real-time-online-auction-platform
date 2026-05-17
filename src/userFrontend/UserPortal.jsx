@@ -20,9 +20,10 @@ const UserPortal = () => {
   return (
     <Routes>
 
-      {/* Public pages — anyone can access */}
+      {/* Public pages */}
       <Route path="/" element={<HomePage />} />
       <Route path="/product/:id" element={<ProductDetailPage />} />
+      <Route path="/auction/:productSlug" element={<ProductDetailPage />} />
       <Route path="/category/:category" element={<CategoryPage />} />
       <Route path="/auctions" element={<AuctionsPage />} />
       <Route path="/how-to-bid" element={<HowToBid />} />
@@ -34,11 +35,11 @@ const UserPortal = () => {
       <Route path="/search" element={<SearchPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-      {/* Protected pages — only logged in users */}
+      {/* Protected pages */}
       <Route path="/notifications" element={
         // <ProtectedRoute>
           <NotificationsPage />
-        //  </ProtectedRoute>
+        // </ProtectedRoute>
       } />
 
       <Route path="/checkout" element={

@@ -26,7 +26,7 @@
 /* Primary / Approve */
 .button.success {
   background-color: #0e5940;
-  color: #fff;
+  color: var(--color-card);
 }
 
 .button.success:hover {
@@ -36,7 +36,7 @@
 /* Secondary / Blue */
 .button.secondary {
   background-color: #2563EB;
-  color: #fff;
+  color: var(--color-card);
 }
 
 .button.secondary:hover {
@@ -46,7 +46,7 @@
 /* Danger / Reject */
 .button.danger {
   background-color: #991B1B;
-  color: #fff;
+  color: var(--color-card);
 }
 
 .button.danger:hover {

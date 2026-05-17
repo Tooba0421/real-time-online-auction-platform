@@ -1,7 +1,6 @@
 .footer {
   background: #0f172a;
-  color: #fff;
-  font-family: "Inter", sans-serif;
+  color: var(--color-card);
 }
 
 /* ===== CTA SECTION ===== */
@@ -26,7 +25,7 @@
 
 .btn-primary {
   background: var(--color-gold);
-  color: #fff;
+  color: var(--color-card);
   padding: 10px 20px;
   border: none;
   border-radius: 6px;
@@ -71,7 +70,7 @@
 }
 
 .footer-column a {
-  color: #fff;
+  color: var(--color-card);
   font-size: 14px;
   text-decoration: none;
   transition: 0.3s;
@@ -145,7 +144,7 @@
 }
 
 .footer-links a {
-  color: #fff;
+  color: var(--color-card);
   text-decoration: none;
 }
 

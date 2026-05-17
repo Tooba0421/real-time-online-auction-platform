@@ -30,7 +30,7 @@
 }
 
 .step-card {
-  background: #fff;
+  background: var(--color-card);
   padding: 28px 20px;
   border-radius: 14px;
   text-align: center;
@@ -98,7 +98,7 @@
 /* CTA BOX */
 .cta-box {
     margin-top: 40px;
-    background: #fff;
+    background: var(--color-card);
     padding: 25px;
     border-radius: 12px;
     border: 1px solid #eee;

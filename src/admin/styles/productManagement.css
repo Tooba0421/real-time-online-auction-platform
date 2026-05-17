@@ -32,7 +32,7 @@
 /* ===== Modal Box ===== */
 .image-modal-content {
   position: relative;
-  background: #fff;
+  background: var(--color-card);
   padding: 1.5rem;
   border-radius: 12px;
   max-width: 600px;

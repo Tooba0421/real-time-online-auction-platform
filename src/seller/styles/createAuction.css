@@ -1,6 +1,6 @@
 .create-auction {
   padding: 0 2rem;
-  background: #F9FAFB;
+  background: var(--color-bg);
   min-height: 100vh;
 }
 
@@ -10,13 +10,13 @@
 }
 
 .page-header p {
-  color: #6B7280;
+  color: var(--color-text-muted);
   margin-bottom: 1.5rem;
 }
 
 /* Card */
 .form-card {
-  background: #ffffff;
+  background: var(--color-card);
   padding: 1.5rem;
   border-radius: 1rem;
   margin-bottom: 1.5rem;
@@ -48,17 +48,17 @@
   width: 100%;
   padding: 0.65rem;
   border-radius: 0.6rem;
-  border: 1px solid #E5E7EB;
+  border: 1px solid var(--color-border);
   font-size: 0.9rem;
   transition: 0.2s;
   background-color: transparent;
-  color: #111827;
+  color: var(--color-text-primary);
 }
 
 .form-input:focus,
 .form-select:focus,
 .form-textarea:focus {
-  border: 1px solid #9b9b9b;
+  border: 1px solid var(--color-hover);
   box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.1);
   outline: none;
 }
@@ -219,7 +219,7 @@ textarea {
 }
 
 .btn-secondary {
-  background: #6B7280;
+  background: var(--color-text-muted);
   color: white;
   padding: 0.6rem 1.2rem;
   border-radius: 0.6rem;

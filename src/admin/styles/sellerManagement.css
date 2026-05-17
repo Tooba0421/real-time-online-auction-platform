@@ -2,7 +2,7 @@
 
 .sub-text {
   font-size: 0.75rem;
-  color: #6B7280;
+  color: var(--color-text-muted);
 }
 
 .earnings {
@@ -35,7 +35,7 @@
 }
 
 .cnic-modal {
-  background: #fff;
+  background: var(--color-card);
   padding: 25px;
   border-radius: 10px;
   width: 600px;
@@ -61,7 +61,7 @@
   padding: 8px 16px;
   border: none;
   background: #c0392b;
-  color: #fff;
+  color: var(--color-card);
   border-radius: 5px;
   cursor: pointer;
 }

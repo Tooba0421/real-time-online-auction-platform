@@ -90,14 +90,14 @@
 .header-btn:hover {
   background-color: var(--color-dark);
   border-color: var(--color-dark);
-  color: #fff;
+  color: var(--color-card);
 }
 
 .signup-btn {
   padding: 8px 18px;
   border: none;
   background-color: var(--color-dark);
-  color: #fff;
+  color: var(--color-card);
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
@@ -167,16 +167,15 @@
   height: 34px;
   border-radius: 50%;
   background: linear-gradient(135deg, #c4923a, #d4a84a);
-  color: #fff;
+  color: var(--color-card);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 14px;
   font-weight: 700;
-  font-family: 'DM Sans', sans-serif;
   letter-spacing: 0;
   box-shadow: 0 2px 8px rgba(196, 146, 58, 0.35);
-  border: 2px solid #fff;
+  border: 2px solid var(--color-card);
   transition: box-shadow 0.2s, transform 0.18s;
 }
 
@@ -264,7 +263,7 @@
   width: 320px;
   max-height: 400px;
   overflow-y: auto;
-  background: #fff;
+  background: var(--color-card);
   border-radius: 6px;
   padding: 10px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
@@ -520,7 +519,7 @@
   left: -280px;
   width: 260px;
   height: 100vh;
-  background: #fff;
+  background: var(--color-card);
   flex-direction: column;
   justify-content: start;
   align-items: start;

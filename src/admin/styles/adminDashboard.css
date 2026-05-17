@@ -6,8 +6,7 @@
     display: flex;
     min-height: 100vh;
     overflow: hidden;
-    font-family: Arial, sans-serif;
-    color: #111827;
+    color: var(--color-text-primary);
 }
 
 
@@ -18,8 +17,8 @@ SIDEBAR
 .sidebar {
     width: 16rem;
     height: 100vh;
-    background-color: #182135;
-    color: #F9FAFB;
+    background-color: var(--color-dark);
+    color: var(--color-bg);
     padding: 1.5rem 1rem;
     position: fixed;
     top: 0;
@@ -33,7 +32,7 @@ SIDEBAR
 .sidebar-title {
     text-align: center;
     margin-bottom: 2rem;
-    color: #D4AF37;
+    color: var(--color-gold);
     font-weight: bold;
     font-size: 1.4rem;
 }
@@ -48,7 +47,7 @@ SIDEBAR
 .sidebar-toggle {
     font-size: 1.4rem;
     cursor: pointer;
-    color: #D4AF37;
+    color: var(--color-gold);
 }
 
 /* Sidebar buttons */
@@ -57,7 +56,7 @@ SIDEBAR
     border: none;
     padding: 0.6rem 1rem;
     border-radius: 0.4rem;
-    color: #F9FAFB;
+    color: var(--color-bg);
     font-weight: 500;
     width: 100%;
     text-align: left;
@@ -71,13 +70,13 @@ SIDEBAR
 .sidebar-item:hover,
 .sidebar-item:focus {
     background-color: #1F2937;
-    color: #D4AF37;
+    color: var(--color-gold);
     outline: none;
 }
 
 .sidebar-item.active {
     background-color: #1F2937;
-    color: #D4AF37;
+    color: var(--color-gold);
     font-weight: 600;
 }
 
@@ -91,7 +90,7 @@ SIDEBAR
     justify-content: center;
     font-size: 1.3rem;
     /* min-width: auto; */
-    color: #F9FAFB;
+    color: var(--color-bg);
 }
 
 .sidebar-item svg {
@@ -110,7 +109,7 @@ SIDEBAR
 }
 
 .sidebar::-webkit-scrollbar-thumb {
-    background-color: #D4AF37;
+    background-color: var(--color-gold);
     border-radius: 0.25rem;
 }
 
@@ -146,8 +145,8 @@ HEADER
     justify-content: space-between;
     align-items: center;
     padding: 0 1rem;
-    background-color: #FFFFFF;
-    border-bottom: 0.1rem solid #E5E7EB;
+    background-color: var(--color-card);
+    border-bottom: 0.1rem solid var(--color-border);
     position: sticky;
     top: 0;
     z-index: 500;
@@ -183,7 +182,7 @@ HEADER
     position: relative;
     font-size: 1.25rem;
     cursor: pointer;
-    color: #374151;
+    color: var(--color-text-secondary);
 }
 
 .notification-badge {
@@ -234,7 +233,7 @@ HEADER
     flex: 1;
     width: 100%;
     padding: 1.5rem;
-    background-color: #F9FAFB;
+    background-color: var(--color-bg);
     overflow-y: auto;
 }
 
@@ -320,7 +319,7 @@ HEADER
         display: none;
         font-weight: bold;
         font-size: 1.2rem;
-        color: #D4AF37;
+        color: var(--color-gold);
     }
 
     /* Main layout */
@@ -357,7 +356,7 @@ HEADER
     .sidebar-toggle {
         font-size: 1.5rem;
         cursor: pointer;
-        color: #D4AF37;
+        color: var(--color-gold);
     }
 }
 
@@ -381,7 +380,7 @@ HEADER
         padding: 1.5rem 0 1.5rem 0.2rem;
         overflow: hidden;
         transition: none;
-        border-bottom: 0.1rem solid #E5E7EB;
+        border-bottom: 0.1rem solid var(--color-border);
     }
 
     /* Hide everything except toggle */

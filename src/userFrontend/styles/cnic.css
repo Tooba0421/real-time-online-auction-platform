@@ -131,7 +131,7 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  color: #fff;
+  color: var(--color-card);
   font-size: 12px;
   font-weight: 600;
   border-radius: 8px;
@@ -163,7 +163,7 @@
 /* Submit button loading */
 .cnic-submit-btn {
   margin-top: 4px;
-  color: #fff;
+  color: var(--color-card);
 }
 
 .cnic-btn-loading {
@@ -177,7 +177,7 @@
   width: 16px;
   height: 16px;
   border: 2px solid rgba(255,255,255,0.35);
-  border-top-color: #fff;
+  border-top-color: var(--color-card);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
   display: inline-block;

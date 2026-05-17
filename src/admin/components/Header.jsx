@@ -1,11 +1,12 @@
 import { FaBell } from "react-icons/fa";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../../supabase/supabase";
 import { useAuthContext } from "../../context/AuthContext";
 import "../styles/adminDashboard.css";
 
 const Header = ({ title }) => {
-
+  const navigate = useNavigate();
   const { user, profile } = useAuthContext();
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -39,6 +40,11 @@ const Header = ({ title }) => {
     setUnreadCount(count || 0)
   }
 
+  const getInitial = () => {
+    const name = profile?.name || user?.email || "S";
+    return name.charAt(0).toUpperCase();
+  };
+
   return (
     <nav className="header">
       <div className="header-left">
@@ -55,19 +61,15 @@ const Header = ({ title }) => {
           )}
         </div>
 
-        {/* Real admin name and avatar */}
-        <div className="header-profile">
-          {profile?.avatar_url ? (
-            <img
-              src={profile.avatar_url}
-              alt="Admin Avatar"
-              className="profile-avatar"
-            />
-          ) : (
-            <div className="profile-avatar-placeholder">
-              {profile?.name?.charAt(0).toUpperCase() || 'A'}
-            </div>
-          )}
+        {/* Profile — navigates to UserFrontend ProfilePage */}
+        <div
+          className="header-profile"
+          onClick={() => navigate('/profile')}
+          style={{ cursor: "pointer" }}
+        >
+          <div className="profile-initial-avatar-small">
+            {getInitial()}
+          </div>
         </div>
 
       </div>

@@ -3,7 +3,6 @@
   padding: 0.5rem 1.5rem;
   background: #f7f9fc;
   border-radius: 0.8rem;
-  font-family: "Inter", sans-serif;
   margin-bottom: 1rem;
 }
 
@@ -21,7 +20,7 @@
   border-radius: 0.5rem;
   border: 1px solid #dee2e6;
   font-size: 0.85rem;
-  background: #fff;
+  background: var(--color-card);
   color: #000;
   outline: none;
   transition: 0.2s;
@@ -29,13 +28,13 @@
 
 .page-controls input:focus,
 .page-controls select:focus {
-  border: 1px solid #9b9b9b;
+  border: 1px solid var(--color-hover);
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
 }
 
 /* ================= Section Block ================= */
 .seller-section {
-  background: #fff;
+  background: var(--color-card);
   padding: 1rem;
   border-radius: 0.6rem;
   margin-bottom: 1.5rem;
@@ -50,7 +49,7 @@
 
 /* ================= Table ================= */
 .table-wrapper {
-  background: #ffffff;
+  background: var(--color-card);
   border-radius: 0.75rem;
   box-shadow: 0 0.3rem 1rem rgba(17, 24, 39, 0.08);
   overflow-x: auto;
@@ -63,14 +62,14 @@
   font-size: 0.85rem;
 }
 .seller-table thead {
-  background-color: #F9FAFB;
+  background-color: var(--color-bg);
 }
 
 .seller-table th,
 .seller-table td {
   padding: 0.8rem 1rem;
   font-size: 0.85rem;
-  border-bottom: 0.05rem solid #e5e7eb;
+  border-bottom: 0.05rem solid var(--color-border);
   white-space: nowrap;
 }
 
@@ -90,7 +89,7 @@
 }
 
 .table-wrapper::-webkit-scrollbar-thumb {
-  background-color: #D4AF37;
+  background-color: var(--color-gold);
   border-radius: 0.3rem;
 }
 
@@ -117,7 +116,7 @@
 /* Chart Box inside admin-section */
 
 .chart-box {
-  background: #ffffff;
+  background: var(--color-card);
   border-radius: 1rem;
   padding: 1rem;
   box-shadow: 0 0.5rem 1.5rem rgba(17, 24, 39, 0.08);

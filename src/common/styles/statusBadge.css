@@ -34,7 +34,7 @@
 .status-badge.cancelled,
 .status-badge.user {
   background: rgba(107, 114, 128, 0.2);
-  color: #374151;
+  color: var(--color-text-secondary);
 }
 
 /* Approved - Emerald */
