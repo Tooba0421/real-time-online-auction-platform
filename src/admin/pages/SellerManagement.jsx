@@ -30,6 +30,9 @@ const SellerManagement = () => {
   const [reasonText, setReasonText] = useState("");
   const [actionType, setActionType] = useState("");
   const [processing, setProcessing] = useState(false);
+  // Add state
+  const [sellerCnicUrls, setSellerCnicUrls] = useState({ front: null, back: null });
+  const [sellerCnicLoading, setSellerCnicLoading] = useState(false);
 
   useEffect(() => {
     fetchSellers();
@@ -132,6 +135,34 @@ const SellerManagement = () => {
       setLoading(false);
     }
   };
+
+  // Add function
+  const handleViewSellerCnic = async (seller) => {
+    try {
+      setSellerCnicLoading(true);
+      setSelectedCnicSeller(seller);
+
+      const { data: frontSigned } = await supabase.storage
+        .from("cnic-images")
+        .createSignedUrl(`sellers/${seller.user_id}/front`, 60);
+
+      const { data: backSigned } = await supabase.storage
+        .from("cnic-images")
+        .createSignedUrl(`sellers/${seller.user_id}/back`, 60);
+
+      setSellerCnicUrls({
+        front: frontSigned?.signedUrl || null,
+        back: backSigned?.signedUrl || null,
+      });
+
+    } catch (err) {
+      console.error(err);
+      toast.error("Could not load CNIC images");
+    } finally {
+      setSellerCnicLoading(false);
+    }
+  };
+
 
   // Approve seller
   const handleApprove = async (seller) => {
@@ -435,7 +466,7 @@ const SellerManagement = () => {
                       <td>
                         <span
                           className="view-image-link"
-                          onClick={() => setSelectedCnicSeller(seller)}
+                          onClick={() => handleViewSellerCnic(seller)}
                         >
                           View CNIC
                         </span>
@@ -563,34 +594,47 @@ const SellerManagement = () => {
 
       {/* CNIC MODAL */}
       {selectedCnicSeller && (
-        <div className="cnic-modal-overlay">
-          <div className="cnic-modal">
-            <h3>CNIC Details - {selectedCnicSeller.name}</h3>
-            <div className="cnic-images">
-              <div>
-                <p>Front Side</p>
-                <img
-                  src={selectedCnicSeller.cnic_front}
-                  alt="CNIC Front"
-                />
-              </div>
-              <div>
-                <p>Back Side</p>
-                <img
-                  src={selectedCnicSeller.cnic_back}
-                  alt="CNIC Back"
-                />
-              </div>
-            </div>
-            <button
-              className="close-btn"
-              onClick={() => setSelectedCnicSeller(null)}
-            >
-              Close
-            </button>
+  <div className="cnic-modal-overlay">
+    <div className="cnic-modal">
+      <h3>CNIC Details — {selectedCnicSeller.name}</h3>
+
+      {sellerCnicLoading ? (
+        <div style={{ textAlign: "center", padding: "30px" }}>
+          Loading images...
+        </div>
+      ) : (
+        <div className="cnic-images">
+          <div>
+            <p>Front Side</p>
+            {sellerCnicUrls.front ? (
+              <img src={sellerCnicUrls.front} alt="CNIC Front" />
+            ) : (
+              <p style={{ color: "#999" }}>Image not available</p>
+            )}
+          </div>
+          <div>
+            <p>Back Side</p>
+            {sellerCnicUrls.back ? (
+              <img src={sellerCnicUrls.back} alt="CNIC Back" />
+            ) : (
+              <p style={{ color: "#999" }}>Image not available</p>
+            )}
           </div>
         </div>
       )}
+
+      <button
+        className="close-btn"
+        onClick={() => {
+          setSelectedCnicSeller(null);
+          setSellerCnicUrls({ front: null, back: null });
+        }}
+      >
+        Close
+      </button>
+    </div>
+  </div>
+)}
 
       {/* REASON MODAL */}
       {selectedSeller && (

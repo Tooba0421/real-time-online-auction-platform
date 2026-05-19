@@ -50,7 +50,6 @@ const Header = () => {
   const goToNotifications = () => navigate("/notifications");
   const goToCategory = (category) => navigate(`/category/${encodeURIComponent(category)}`);
 
-  // ✅ Get avatar letter — works even during loading
   const getAvatarLetter = () => {
     if (profile?.name) return profile.name.charAt(0).toUpperCase();
     if (user?.email) return user.email.charAt(0).toUpperCase();
@@ -58,6 +57,37 @@ const Header = () => {
   };
 
   const avatarLetter = getAvatarLetter();
+
+  // Dashboard button logic
+  const getDashboardButton = () => {
+    if (!user || !profile) return null;
+
+    if (profile.role === "admin") {
+      return (
+        <button
+          className="dashboard-btn"
+          onClick={() => navigate("/admin")}
+          title="Go to Admin Dashboard"
+        >
+          Admin Dashboard
+        </button>
+      );
+    }
+
+    if (profile.role === "seller") {
+      return (
+        <button
+          className="dashboard-btn"
+          onClick={() => navigate("/seller")}
+          title="Go to Seller Dashboard"
+        >
+          Seller Dashboard
+        </button>
+      );
+    }
+
+    return null;
+  };
 
   return (
     <>
@@ -89,6 +119,7 @@ const Header = () => {
         </form>
 
         <div className="header-actions">
+
           <div className="icons">
 
             {/* Favorites */}
@@ -134,13 +165,13 @@ const Header = () => {
             {/* Notifications */}
             <FaBell className="header-icon" onClick={goToNotifications} />
 
-            {/* ✅ Avatar — always visible when user exists, no flicker */}
+            {/* Avatar */}
             {user && avatarLetter && (
               <div
                 className="profile-icon-avatar"
                 onClick={() => navigate("/profile")}
                 title="My Profile"
-                style={{ cursor: 'pointer' }}
+                style={{ cursor: "pointer" }}
               >
                 {avatarLetter}
               </div>
@@ -148,7 +179,7 @@ const Header = () => {
 
           </div>
 
-          {/* ✅ Show Login/Signup only when NOT loading and NOT logged in */}
+          {/* Login/Signup — only when not logged in */}
           {!loading && !user && (
             <>
               <button
@@ -224,6 +255,19 @@ const Header = () => {
         </div>
         <span onClick={() => { navigate("/auctions"); setShowMenu(false); }}>Auctions</span>
         <span onClick={() => { navigate("/how-to-bid"); setShowMenu(false); }}>How to Bid</span>
+
+        {/* Dashboard link in sidebar too */}
+        {!loading && profile?.role === "admin" && (
+          <span onClick={() => { navigate("/admin"); setShowMenu(false); }}>
+            Admin Dashboard
+          </span>
+        )}
+        {!loading && profile?.role === "seller" && (
+          <span onClick={() => { navigate("/seller"); setShowMenu(false); }}>
+            Seller Dashboard
+          </span>
+        )}
+
       </nav>
 
       {/* MODALS */}

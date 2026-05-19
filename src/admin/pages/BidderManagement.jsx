@@ -30,6 +30,9 @@ const BidderManagement = () => {
   const [reasonText, setReasonText] = useState("");
   const [processing, setProcessing] = useState(false);
 
+  const [cnicUrls, setCnicUrls] = useState({ front: null, back: null });
+  const [cnicLoading, setCnicLoading] = useState(false);
+
   useEffect(() => {
     fetchBidders();
   }, []);
@@ -38,62 +41,95 @@ const BidderManagement = () => {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase
-        .from('buyers')
+      // Fetch pending CNIC submissions (not yet buyers)
+      const { data: pendingData, error: pendingError } = await supabase
+        .from("pending_cnic_submissions")
         .select(`
-          *,
-          profiles (
-            id,
-            name,
-            role,
-            status
-          )
-        `)
-        .order('created_at', { ascending: false });
+        *,
+        profiles (
+          id,
+          name,
+          role,
+          status
+        )
+      `)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
 
-      if (error) {
-        toast.error("Error fetching bidders");
-        console.error(error);
+      if (pendingError) {
+        toast.error("Error fetching pending bidders");
+        console.error(pendingError);
         return;
       }
 
-      const pending = [];
+      // Fetch approved buyers
+      const { data: buyerData, error: buyerError } = await supabase
+        .from("buyers")
+        .select(`
+        *,
+        profiles (
+          id,
+          name,
+          role,
+          status
+        )
+      `)
+        .eq("is_verified", "approved")
+        .order("created_at", { ascending: false });
+
+      if (buyerError) {
+        console.error(buyerError);
+        return;
+      }
+
+      // Fetch rejected submissions
+      const { data: rejectedData } = await supabase
+        .from("pending_cnic_submissions")
+        .select(`
+        *,
+        profiles (
+          id,
+          name,
+          role,
+          status
+        )
+      `)
+        .eq("status", "rejected")
+        .order("created_at", { ascending: false });
+
+      // Map pending
+      const pending = (pendingData || []).map(s => ({
+        ...s,
+        name: s.profiles?.name || "—",
+        submissionId: s.id,
+      }));
+
+      // Map approved buyers with bid stats
       const approved = [];
-      const rejected = [];
-
-      for (const buyer of data) {
-        // Count total bids placed
+      for (const buyer of buyerData || []) {
         const { count: totalBids } = await supabase
-          .from('bids')
-          .select('*', { count: 'exact', head: true })
-          .eq('bidder_id', buyer.id);
+          .from("bids")
+          .select("*", { count: "exact", head: true })
+          .eq("bidder_id", buyer.id);
 
-        // Count auctions won
         const { count: auctionsWon } = await supabase
-          .from('auctions')
-          .select('*', { count: 'exact', head: true })
-          .eq('winner_id', buyer.id);
+          .from("auctions")
+          .select("*", { count: "exact", head: true })
+          .eq("winner_id", buyer.id);
 
-        const buyerWithStats = {
+        approved.push({
           ...buyer,
-          name: buyer.profiles?.name || '—',
+          name: buyer.profiles?.name || "—",
           totalBids: totalBids || 0,
           auctionsWon: auctionsWon || 0,
-        };
-
-        if (buyer.is_verified === 'pending') {
-          pending.push(buyerWithStats);
-        } else if (buyer.is_verified === 'approved') {
-          approved.push(buyerWithStats);
-        } else if (
-          buyer.is_verified === 'rejected' ||
-          buyer.is_verified === 'not_submitted'
-        ) {
-          if (buyer.is_verified === 'rejected') {
-            rejected.push(buyerWithStats);
-          }
-        }
+        });
       }
+
+      // Map rejected
+      const rejected = (rejectedData || []).map(s => ({
+        ...s,
+        name: s.profiles?.name || "—",
+      }));
 
       setPendingBidders(pending);
       setApprovedBidders(approved);
@@ -107,66 +143,98 @@ const BidderManagement = () => {
     }
   };
 
+  const handleViewCnic = async (submission) => {
+    try {
+      setCnicLoading(true);
+      setSelectedCnic(submission);
+
+      const { data: frontSigned } = await supabase.storage
+        .from("cnic-images")
+        .createSignedUrl(`buyers/${submission.user_id}/front`, 60);
+
+      const { data: backSigned } = await supabase.storage
+        .from("cnic-images")
+        .createSignedUrl(`buyers/${submission.user_id}/back`, 60);
+
+      setCnicUrls({
+        front: frontSigned?.signedUrl || null,
+        back: backSigned?.signedUrl || null,
+      });
+
+    } catch (err) {
+      console.error(err);
+      toast.error("Could not load CNIC images");
+    } finally {
+      setCnicLoading(false);
+    }
+  };
+
   // Approve bidder
-  const handleApprove = async (buyer) => {
+  const handleApprove = async (submission) => {
     try {
       setProcessing(true);
 
-      // Step 1: Update buyers.is_verified
+      // Get signed URLs to copy to buyers table
+      const { data: frontSigned } = await supabase.storage
+        .from("cnic-images")
+        .createSignedUrl(`buyers/${submission.user_id}/front`, 3600);
+
+      const { data: backSigned } = await supabase.storage
+        .from("cnic-images")
+        .createSignedUrl(`buyers/${submission.user_id}/back`, 3600);
+
+      // Step 1: Create buyer record NOW (only on approval)
       const { error: buyerError } = await supabase
-        .from('buyers')
-        .update({ is_verified: 'approved' })
-        .eq('id', buyer.id);
+        .from("buyers")
+        .insert({
+          user_id: submission.user_id,
+          cnic_number: submission.cnic_number,
+          cnic_front: `buyers/${submission.user_id}/front`,
+          cnic_back: `buyers/${submission.user_id}/back`,
+          is_verified: "approved",
+        });
 
       if (buyerError) {
-        toast.error("Error approving bidder");
+        toast.error("Error creating buyer record");
         console.error(buyerError);
         return;
       }
 
-      // Step 2: Update profiles role and id_verified
+      // Step 2: Update profile role and id_verified
       const { error: profileError } = await supabase
-        .from('profiles')
+        .from("profiles")
         .update({
-          role: 'buyer',
-          id_verified: 'approved'
+          role: "buyer",
+          id_verified: "approved",
         })
-        .eq('id', buyer.user_id);
+        .eq("id", submission.user_id);
 
       if (profileError) {
-        toast.error("Error updating bidder profile");
+        toast.error("Error updating profile");
         console.error(profileError);
         return;
       }
 
-      // Step 3: Log admin action
+      // Step 3: Mark submission as approved
       await supabase
-        .from('admin_actions')
-        .insert({
-          admin_id: user.id,
-          action_type: 'approve',
-          target_id: buyer.id,
-          target_table: 'buyers',
-          remarks: 'Bidder CNIC approved by admin'
-        });
+        .from("pending_cnic_submissions")
+        .update({ status: "approved" })
+        .eq("id", submission.submissionId);
 
       // Step 4: Notify user
-      await supabase
-        .from('notifications')
-        .insert({
-          user_id: buyer.user_id,
-          title: 'CNIC Verified — You Can Now Bid! 🎉',
-          message: 'Your identity has been verified. You can now place bids on auctions.',
-          type: 'approval',
-          notification_for: 'buyer',
-          is_read: false
-        });
+      await supabase.from("notifications").insert({
+        user_id: submission.user_id,
+        title: "CNIC Verified — You Can Now Bid! 🎉",
+        message: "Your identity has been verified. You can now place bids on auctions.",
+        type: "approval",
+        notification_for: "buyer",
+        is_read: false,
+      });
 
-      toast.success(`${buyer.name} approved as bidder!`);
+      toast.success(`${submission.name} approved as bidder!`);
 
-      // Update local state
-      setPendingBidders(prev => prev.filter(b => b.id !== buyer.id));
-      setApprovedBidders(prev => [...prev, { ...buyer, is_verified: 'approved' }]);
+      setPendingBidders(prev => prev.filter(b => b.id !== submission.id));
+      setApprovedBidders(prev => [...prev, { ...submission, is_verified: "approved" }]);
 
     } catch (err) {
       console.error(err);
@@ -191,62 +259,36 @@ const BidderManagement = () => {
     try {
       setProcessing(true);
 
-      // Step 1: Update buyers.is_verified
-      const { error: buyerError } = await supabase
-        .from('buyers')
-        .update({ is_verified: 'rejected' })
-        .eq('id', selectedBidder.id);
-
-      if (buyerError) {
-        toast.error("Error rejecting bidder");
-        console.error(buyerError);
-        return;
-      }
-
-      // Step 2: Update profiles.id_verified
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ id_verified: 'rejected' })
-        .eq('id', selectedBidder.user_id);
-
-      if (profileError) {
-        toast.error("Error updating profile");
-        console.error(profileError);
-        return;
-      }
-
-      // Step 3: Log admin action
+      // Step 1: Mark submission as rejected
       await supabase
-        .from('admin_actions')
-        .insert({
-          admin_id: user.id,
-          action_type: 'reject',
-          target_id: selectedBidder.id,
-          target_table: 'buyers',
-          remarks: reasonText
-        });
+        .from("pending_cnic_submissions")
+        .update({ status: "rejected" })
+        .eq("id", selectedBidder.submissionId);
 
-      // Step 4: Notify user
+      // Step 2: Update profile id_verified
       await supabase
-        .from('notifications')
-        .insert({
-          user_id: selectedBidder.user_id,
-          title: 'CNIC Verification Rejected',
-          message: `Your CNIC verification was rejected. Reason: ${reasonText}`,
-          type: 'approval',
-          notification_for: 'buyer',
-          is_read: false
-        });
+        .from("profiles")
+        .update({ id_verified: "rejected" })
+        .eq("id", selectedBidder.user_id);
+
+      // Step 3: Notify user
+      await supabase.from("notifications").insert({
+        user_id: selectedBidder.user_id,
+        title: "CNIC Verification Rejected",
+        message: `Your CNIC verification was rejected. Reason: ${reasonText}`,
+        type: "approval",
+        notification_for: "buyer",
+        is_read: false,
+      });
 
       toast.success(`${selectedBidder.name} rejected`);
 
-      // Update local state
       setPendingBidders(prev =>
         prev.filter(b => b.id !== selectedBidder.id)
       );
       setRejectedBidders(prev => [
         ...prev,
-        { ...selectedBidder, is_verified: 'rejected', reason: reasonText }
+        { ...selectedBidder, status: "rejected", reason: reasonText }
       ]);
 
       setSelectedBidder(null);
@@ -340,9 +382,8 @@ const BidderManagement = () => {
               <thead>
                 <tr>
                   <th>Name</th>
+                  <th>Email</th>
                   <th>CNIC No</th>
-                  <th>City</th>
-                  <th>Phone</th>
                   <th>View CNIC</th>
                   <th>Request Date</th>
                   <th>Actions</th>
@@ -350,18 +391,14 @@ const BidderManagement = () => {
               </thead>
               <tbody>
                 {pendingBidders.length === 0
-                  ? renderEmptyRow(7, "No pending bidders.")
+                  ? renderEmptyRow(6, "No pending bidders.")
                   : pendingBidders.map(buyer => (
                     <tr key={buyer.id}>
                       <td>{buyer.name}</td>
+                      <td>{buyer.profiles?.email || user?.email || '—'}</td>
                       <td>{buyer.cnic_number}</td>
-                      <td>{buyer.city || '—'}</td>
-                      <td>{buyer.phone_no || '—'}</td>
                       <td>
-                        <span
-                          className="view-image-link"
-                          onClick={() => setSelectedCnic(buyer)}
-                        >
+                        <span className="view-image-link" onClick={() => handleViewCnic(buyer)}>
                           View CNIC
                         </span>
                       </td>
@@ -400,7 +437,6 @@ const BidderManagement = () => {
                 <tr>
                   <th>Name</th>
                   <th>CNIC No</th>
-                  <th>City</th>
                   <th>Total Bids</th>
                   <th>Auctions Won</th>
                   <th>Status</th>
@@ -408,12 +444,11 @@ const BidderManagement = () => {
               </thead>
               <tbody>
                 {approvedBidders.length === 0
-                  ? renderEmptyRow(6, "No approved bidders.")
+                  ? renderEmptyRow(5, "No approved bidders.")
                   : approvedBidders.map(buyer => (
                     <tr key={buyer.id}>
                       <td>{buyer.name}</td>
                       <td>{buyer.cnic_number}</td>
-                      <td>{buyer.city || '—'}</td>
                       <td>{buyer.totalBids}</td>
                       <td>{buyer.auctionsWon}</td>
                       <td>
@@ -439,19 +474,17 @@ const BidderManagement = () => {
                 <tr>
                   <th>Name</th>
                   <th>CNIC No</th>
-                  <th>City</th>
                   <th>Status</th>
                   <th>Reason</th>
                 </tr>
               </thead>
               <tbody>
                 {rejectedBidders.length === 0
-                  ? renderEmptyRow(5, "No rejected bidders.")
+                  ? renderEmptyRow(4, "No rejected bidders.")
                   : rejectedBidders.map(buyer => (
                     <tr key={buyer.id}>
                       <td>{buyer.name}</td>
                       <td>{buyer.cnic_number}</td>
-                      <td>{buyer.city || '—'}</td>
                       <td>
                         <StatusBadge label="Rejected" type="rejected" />
                       </td>
@@ -473,17 +506,39 @@ const BidderManagement = () => {
         <div className="cnic-modal-overlay">
           <div className="cnic-modal">
             <h3>CNIC Details — {selectedCnic.name}</h3>
-            <div className="cnic-images">
-              <div>
-                <p>Front Side</p>
-                <img src={selectedCnic.cnic_front} alt="CNIC Front" />
+
+            {cnicLoading ? (
+              <div style={{ textAlign: "center", padding: "30px" }}>
+                Loading images...
               </div>
-              <div>
-                <p>Back Side</p>
-                <img src={selectedCnic.cnic_back} alt="CNIC Back" />
+            ) : (
+              <div className="cnic-images">
+                <div>
+                  <p>Front Side</p>
+                  {cnicUrls.front ? (
+                    <img src={cnicUrls.front} alt="CNIC Front" />
+                  ) : (
+                    <p style={{ color: "#999" }}>Image not available</p>
+                  )}
+                </div>
+                <div>
+                  <p>Back Side</p>
+                  {cnicUrls.back ? (
+                    <img src={cnicUrls.back} alt="CNIC Back" />
+                  ) : (
+                    <p style={{ color: "#999" }}>Image not available</p>
+                  )}
+                </div>
               </div>
-            </div>
-            <button className="close-btn" onClick={() => setSelectedCnic(null)}>
+            )}
+
+            <button
+              className="close-btn"
+              onClick={() => {
+                setSelectedCnic(null);
+                setCnicUrls({ front: null, back: null });
+              }}
+            >
               Close
             </button>
           </div>

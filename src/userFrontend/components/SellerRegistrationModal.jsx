@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { FaCheckCircle, FaUpload, FaTimes, FaStore } from "react-icons/fa";
 import { supabase } from "../../supabase/supabase";
 import { useAuthContext } from "../../context/AuthContext";
@@ -6,14 +6,15 @@ import toast from "react-hot-toast";
 import "../styles/auth.css";
 
 const SellerRegistrationModal = ({ closeModal }) => {
+  const { user, profile } = useAuthContext();
 
-  const { user } = useAuthContext();
+  const [existingSellerId, setExistingSellerId] = useState(null);
+  const [checkingStatus, setCheckingStatus] = useState(true);
+  const [alreadyPending, setAlreadyPending] = useState(false);
 
   const [formData, setFormData] = useState({
-    sellerName: "",
     businessName: "",
     phone: "",
-    cnicNumber: "",
     city: "",
     postalCode: "",
     address: "",
@@ -26,6 +27,37 @@ const SellerRegistrationModal = ({ closeModal }) => {
   const [frontPreview, setFrontPreview] = useState(null);
   const [backPreview, setBackPreview] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // Check existing seller record on mount
+  useEffect(() => {
+    const checkExisting = async () => {
+      if (!user) return;
+      try {
+        setCheckingStatus(true);
+
+        const { data: existing } = await supabase
+          .from("sellers")
+          .select("id, is_verified")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (existing) {
+          if (existing.is_verified === "pending") {
+            setAlreadyPending(true);
+          } else if (existing.is_verified === "rejected" || existing.is_verified === "suspended") {
+            // Allow resubmission — store the existing id to update instead of insert
+            setExistingSellerId(existing.id);
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setCheckingStatus(false);
+      }
+    };
+
+    checkExisting();
+  }, [user]);
 
   const handleChange = (e) => {
     const { name, value, files } = e.target;
@@ -49,20 +81,20 @@ const SellerRegistrationModal = ({ closeModal }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!user) {
-      toast.error("Please login first");
-      return;
-    }
-
+    if (!user) { toast.error("Please login first"); return; }
     if (!formData.cnicFront || !formData.cnicBack) {
       toast.error("Please upload both CNIC images");
+      return;
+    }
+    if (cnic.length < 15) {
+      toast.error("Please enter a valid CNIC number");
       return;
     }
 
     try {
       setLoading(true);
 
-      // Step 1: Upload CNIC front image
+      // Step 1: Upload CNIC front
       const frontPath = `sellers/${user.id}/front`;
       const { error: frontError } = await supabase.storage
         .from("cnic-images")
@@ -74,7 +106,7 @@ const SellerRegistrationModal = ({ closeModal }) => {
         return;
       }
 
-      // Step 2: Upload CNIC back image
+      // Step 2: Upload CNIC back
       const backPath = `sellers/${user.id}/back`;
       const { error: backError } = await supabase.storage
         .from("cnic-images")
@@ -86,61 +118,63 @@ const SellerRegistrationModal = ({ closeModal }) => {
         return;
       }
 
-      // Step 3: Get public URLs
-      const { data: frontURLData } = supabase.storage
-        .from("cnic-images")
-        .getPublicUrl(frontPath);
+      const sellerPayload = {
+        business_name: formData.businessName,
+        address: formData.address,
+        city: formData.city,
+        postal_code: formData.postalCode,
+        phone_no: formData.phone,
+        description: formData.description,
+        cnic_number: cnic,
+        cnic_front: `sellers/${user.id}/front`,
+        cnic_back: `sellers/${user.id}/back`,
+        is_verified: "pending",
+      };
 
-      const { data: backURLData } = supabase.storage
-        .from("cnic-images")
-        .getPublicUrl(backPath);
+      // Step 3: Insert or update seller record
+      if (existingSellerId) {
+        // Resubmission after rejection — update existing row
+        const { error: updateError } = await supabase
+          .from("sellers")
+          .update(sellerPayload)
+          .eq("id", existingSellerId);
 
-      const frontURL = frontURLData.publicUrl;
-      const backURL = backURLData.publicUrl;
+        if (updateError) {
+          toast.error("Error resubmitting seller form");
+          console.error(updateError);
+          return;
+        }
+      } else {
+        // Fresh submission — insert new row
+        const { error: insertError } = await supabase
+          .from("sellers")
+          .insert({ user_id: user.id, ...sellerPayload });
 
-      // Step 4: Insert into sellers table
-      const { error: sellerError } = await supabase
-        .from("sellers")
-        .insert({
-          user_id: user.id,
-          email: user.email,
-          business_name: formData.businessName,
-          seller_name: formData.sellerName,
-          address: formData.address,
-          city: formData.city,
-          postal_code: formData.postalCode,
-          phone_no: formData.phone,
-          cnic_number: formData.cnicNumber,
-          cnic_front: frontURLData.publicUrl,
-          cnic_back: backURLData.publicUrl,
-          is_verified: "pending"
-        });
-
-      if (sellerError) {
-        toast.error("Error submitting seller form");
-        console.error(sellerError);
-        return;
+        if (insertError) {
+          toast.error("Error submitting seller form");
+          console.error(insertError);
+          return;
+        }
       }
 
-      // Step 5: Get admin id
+      // Step 4: Notify admin
       const { data: adminData } = await supabase
         .from("profiles")
         .select("id")
         .eq("role", "admin")
         .single();
 
-      // Step 6: Notify admin
       if (adminData) {
-        await supabase
-          .from("notifications")
-          .insert({
-            user_id: adminData.id,
-            title: "New Seller Registration",
-            message: `${formData.sellerName} (${user.email}) has submitted a seller registration form.`,
-            type: "approval",
-            notification_for: "admin",
-            is_read: false
-          });
+        await supabase.from("notifications").insert({
+          user_id: adminData.id,
+          title: existingSellerId
+            ? "Seller Resubmitted Application"
+            : "New Seller Registration",
+          message: `${profile?.name || user?.email} has submitted a seller registration form.`,
+          type: "approval",
+          notification_for: "admin",
+          is_read: false,
+        });
       }
 
       toast.success("Seller registration submitted! Waiting for admin approval.");
@@ -154,81 +188,85 @@ const SellerRegistrationModal = ({ closeModal }) => {
     }
   };
 
+  // Loading state while checking
+  if (checkingStatus) {
+    return (
+      <div className="auth-overlay">
+        <div className="auth-modal form-modal" style={{ textAlign: "center", padding: "40px" }}>
+          <p>Checking your status...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Already pending
+  if (alreadyPending) {
+    return (
+      <div className="auth-overlay">
+        <div className="auth-modal form-modal">
+          <FaTimes className="close-icon" onClick={closeModal} />
+          <div className="form-modal-header">
+            <div className="form-modal-icon"><FaStore /></div>
+            <h2>Application Pending</h2>
+            <p className="form-modal-subtitle">
+              Your seller application is already under review. Please wait for admin approval.
+              You will be notified once a decision is made.
+            </p>
+          </div>
+          <button className="auth-btn" onClick={closeModal} style={{ marginTop: "20px" }}>
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="auth-overlay">
       <div className="auth-modal form-modal">
 
         <FaTimes className="close-icon" onClick={closeModal} />
 
-        {/* Header */}
         <div className="form-modal-header">
-          <div className="form-modal-icon">
-            <FaStore />
-          </div>
-          <h2>Seller Registration</h2>
+          <div className="form-modal-icon"><FaStore /></div>
+          <h2>
+            {existingSellerId ? "Resubmit Seller Application" : "Seller Registration"}
+          </h2>
           <p className="form-modal-subtitle">
-            Registering as <strong>{user?.email}</strong>
+            Registering as <strong>{profile?.email || user?.email}</strong>
           </p>
+          {existingSellerId && (
+            <p style={{ color: "#ef4444", fontSize: "13px", marginTop: "6px" }}>
+              Your previous application was rejected. Please update your information and resubmit.
+            </p>
+          )}
         </div>
 
         <form className="auth-form form-grid" onSubmit={handleSubmit}>
 
-          {/* Row 1 */}
           <div className="form-row">
-            <div className="form-field">
-              <label className="form-label">Full Name</label>
-              <input
-                className="auth-input"
-                type="text"
-                name="sellerName"
-                // placeholder="e.g. Ali Khan"
-                required
-                onChange={handleChange}
-              />
-            </div>
-
             <div className="form-field">
               <label className="form-label">Business Name</label>
               <input
                 className="auth-input"
                 type="text"
                 name="businessName"
-                // placeholder="e.g. Khan Traders"
                 required
-                onChange={handleChange} />
+                onChange={handleChange}
+              />
             </div>
-
-          </div>
-
-          {/* Row 2 */}
-          <div className="form-row">
             <div className="form-field">
               <label className="form-label">Phone Number</label>
               <input
                 className="auth-input"
                 type="text"
                 name="phone"
-                // placeholder="03XX-XXXXXXX"
                 required
                 onChange={handleChange}
               />
             </div>
-
-            <div className="form-field">
-              <label className="form-label">CNIC Number</label>
-              <input
-                className="auth-input "
-                type="text"
-                name="cnicNumber"
-                // placeholder="XXXXX-XXXXXXX-X"
-                value={cnic}
-                onChange={handleCnicChange}
-                maxLength={15}
-              />
-            </div>
           </div>
 
-          {/* Row 3 */}
           <div className="form-row">
             <div className="form-field">
               <label className="form-label">City</label>
@@ -236,19 +274,16 @@ const SellerRegistrationModal = ({ closeModal }) => {
                 className="auth-input"
                 type="text"
                 name="city"
-                // placeholder="e.g. Karachi"
                 required
                 onChange={handleChange}
               />
             </div>
-
             <div className="form-field">
               <label className="form-label">Postal Code</label>
               <input
                 className="auth-input"
                 type="text"
                 name="postalCode"
-                // placeholder="e.g. 75400"
                 required
                 onChange={handleChange}
               />
@@ -261,13 +296,11 @@ const SellerRegistrationModal = ({ closeModal }) => {
               className="auth-input"
               type="text"
               name="address"
-              // placeholder="House #, Street, Area"
               required
               onChange={handleChange}
             />
           </div>
 
-          {/* Description */}
           <div className="form-field">
             <label className="form-label">Description</label>
             <textarea
@@ -279,9 +312,19 @@ const SellerRegistrationModal = ({ closeModal }) => {
             />
           </div>
 
-          {/* CNIC Upload */}
-          <div className="form-upload-row">
+          <div className="form-field">
+            <label className="form-label">CNIC Number</label>
+            <input
+              className="auth-input"
+              type="text"
+              value={cnic}
+              onChange={handleCnicChange}
+              maxLength={15}
+              placeholder="XXXXX-XXXXXXX-X"
+            />
+          </div>
 
+          <div className="form-upload-row">
             <div className="form-upload-box">
               <label className="form-label">CNIC Front</label>
               <label className="form-upload-area" htmlFor="seller-cnic-front">
@@ -327,7 +370,6 @@ const SellerRegistrationModal = ({ closeModal }) => {
               <input id="seller-cnic-back" type="file" name="cnicBack"
                 accept="image/*" style={{ display: "none" }} onChange={handleChange} />
             </div>
-
           </div>
 
           <p className="form-info-note">
@@ -339,11 +381,10 @@ const SellerRegistrationModal = ({ closeModal }) => {
               <span className="form-btn-loading">
                 <span className="form-btn-spinner" /> Submitting...
               </span>
-            ) : "Submit for Approval"}
+            ) : existingSellerId ? "Resubmit Application" : "Submit for Approval"}
           </button>
 
         </form>
-
       </div>
     </div>
   );

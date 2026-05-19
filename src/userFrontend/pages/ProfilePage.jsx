@@ -13,7 +13,7 @@ import "../styles/profile.css";
 
 const ProfilePage = () => {
   const navigate = useNavigate();
-const { user, loading: authLoading, refreshProfile } = useAuthContext();
+  const { user, loading: authLoading, refreshProfile } = useAuthContext();
 
   const [profile, setProfile] = useState(null);
   const [seller, setSeller] = useState(null);
@@ -21,25 +21,28 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
   const [pendingChange, setPendingChange] = useState(null);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState(null);
-
-  const [showPersonalEdit, setShowPersonalEdit] = useState(false);
-  const [showSellerEditModal, setShowSellerEditModal] = useState(false);
-  const [showCnicEdit, setShowCnicEdit] = useState(false);
-  const [showCnicModal, setShowCnicModal] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // For admin/buyer/user — name only
-  const [personalForm, setPersonalForm] = useState({});
+  // Modal visibility states
+  const [showPersonalEdit, setShowPersonalEdit] = useState(false);
+  const [showSellerBasicEdit, setShowSellerBasicEdit] = useState(false);
+  const [showSellerApprovalEdit, setShowSellerApprovalEdit] = useState(false);
+  const [showCnicEdit, setShowCnicEdit] = useState(false);
+  const [showCnicModal, setShowCnicModal] = useState(false);
 
-  // For seller — all fields in one form
-  const [sellerEditForm, setSellerEditForm] = useState({});
+  // Form states
+  const [personalForm, setPersonalForm] = useState({});
+  const [sellerBasicForm, setSellerBasicForm] = useState({});
+  const [sellerApprovalForm, setSellerApprovalForm] = useState({});
   const [frontPreview, setFrontPreview] = useState(null);
   const [backPreview, setBackPreview] = useState(null);
-
-  // For buyer — CNIC only
   const [cnicForm, setCnicForm] = useState({ cnic_number: "", front: null, back: null });
   const [buyerFrontPreview, setBuyerFrontPreview] = useState(null);
   const [buyerBackPreview, setBuyerBackPreview] = useState(null);
+
+  // CNIC image URLs (signed)
+  const [sellerCnicUrls, setSellerCnicUrls] = useState({ front: null, back: null });
+  const [buyerCnicUrls, setBuyerCnicUrls] = useState({ front: null, back: null });
 
   useEffect(() => {
     if (authLoading) return;
@@ -47,13 +50,48 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
     fetchAllData();
   }, [user, authLoading]);
 
+  const fetchBuyerCnicUrls = async () => {
+    if (!user) return;
+    try {
+      const { data: frontSigned } = await supabase.storage
+        .from("cnic-images")
+        .createSignedUrl(`buyers/${user.id}/front`, 3600);
+      const { data: backSigned } = await supabase.storage
+        .from("cnic-images")
+        .createSignedUrl(`buyers/${user.id}/back`, 3600);
+      setBuyerCnicUrls({
+        front: frontSigned?.signedUrl || null,
+        back: backSigned?.signedUrl || null,
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchSellerCnicUrls = async () => {
+    if (!user) return;
+    try {
+      const { data: frontSigned } = await supabase.storage
+        .from("cnic-images")
+        .createSignedUrl(`sellers/${user.id}/front`, 3600);
+      const { data: backSigned } = await supabase.storage
+        .from("cnic-images")
+        .createSignedUrl(`sellers/${user.id}/back`, 3600);
+      setSellerCnicUrls({
+        front: frontSigned?.signedUrl || null,
+        back: backSigned?.signedUrl || null,
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const fetchAllData = async () => {
     try {
       setLoading(true);
 
       const { data: profileData } = await supabase
         .from("profiles").select("*").eq("id", user.id).single();
-
       setProfile(profileData);
       setRole(profileData?.role);
 
@@ -61,15 +99,16 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
         const { data: sellerData } = await supabase
           .from("sellers").select("*").eq("user_id", user.id).single();
         setSeller(sellerData);
+        await fetchSellerCnicUrls();
       }
 
       if (profileData?.role === "buyer") {
         const { data: buyerData } = await supabase
           .from("buyers").select("*").eq("user_id", user.id).single();
         setBuyer(buyerData);
+        await fetchBuyerCnicUrls();
       }
 
-      // Fetch pending change if any
       const { data: pendingData } = await supabase
         .from("pending_changes")
         .select("*")
@@ -78,7 +117,6 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-
       setPendingChange(pendingData || null);
 
     } catch (err) {
@@ -88,7 +126,7 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
     }
   };
 
-  // ── Admin / Buyer / User: name edit (saves immediately) ──
+  // ── Name edit (all roles) ──
   const openPersonalEdit = () => {
     setPersonalForm({ name: profile?.name || "" });
     setShowPersonalEdit(true);
@@ -101,11 +139,9 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
         .from("profiles")
         .update({ name: personalForm.name })
         .eq("id", user.id);
-
       if (error) { alert("Error updating name"); return; }
-      
       setProfile(prev => ({ ...prev, name: personalForm.name }));
-      await refreshProfile(); // ← add this to sync global context
+      await refreshProfile();
       setShowPersonalEdit(false);
     } catch (err) {
       console.error(err);
@@ -114,28 +150,60 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
     }
   };
 
-  // ── Seller: open combined edit modal ──
-  const openSellerEdit = () => {
-    setSellerEditForm({
-      // Saves immediately
+  // ── Seller: Edit 1 — Name + Business Name (saves immediately) ──
+  const openSellerBasicEdit = () => {
+    setSellerBasicForm({
       name: profile?.name || "",
       business_name: seller?.business_name || "",
+    });
+    setShowSellerBasicEdit(true);
+  };
 
-      // Needs approval — pre-fill with pending if exists
+  const handleSaveSellerBasic = async () => {
+    try {
+      setSaving(true);
+
+      // Update name in profiles
+      const { error: nameError } = await supabase
+        .from("profiles")
+        .update({ name: sellerBasicForm.name })
+        .eq("id", user.id);
+      if (nameError) { alert("Error updating name"); return; }
+
+      // Update business name in sellers
+      const { error: bizError } = await supabase
+        .from("sellers")
+        .update({ business_name: sellerBasicForm.business_name })
+        .eq("user_id", user.id);
+      if (bizError) { alert("Error updating business name"); return; }
+
+      setProfile(prev => ({ ...prev, name: sellerBasicForm.name }));
+      setSeller(prev => ({ ...prev, business_name: sellerBasicForm.business_name }));
+      await refreshProfile();
+      setShowSellerBasicEdit(false);
+      alert("Name and business name updated successfully.");
+    } catch (err) {
+      console.error(err);
+      alert("Something went wrong");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── Seller: Edit 2 — Phone, City, Postal, Address, CNIC (requires admin approval) ──
+  const openSellerApprovalEdit = () => {
+    setSellerApprovalForm({
       phone_no: pendingChange?.pending_phone_no || seller?.phone_no || "",
       city: pendingChange?.pending_city || seller?.city || "",
       postal_code: pendingChange?.pending_postal_code || seller?.postal_code || "",
       address: pendingChange?.pending_address || seller?.address || "",
-
-      // CNIC — needs approval
       cnic_number: pendingChange?.pending_cnic_number || seller?.cnic_number || "",
       front: null,
       back: null,
     });
-
-    setFrontPreview(pendingChange?.pending_cnic_front || seller?.cnic_front || null);
-    setBackPreview(pendingChange?.pending_cnic_back || seller?.cnic_back || null);
-    setShowSellerEditModal(true);
+    setFrontPreview(pendingChange?.pending_cnic_front || null);
+    setBackPreview(pendingChange?.pending_cnic_back || null);
+    setShowSellerApprovalEdit(true);
   };
 
   const handleSellerFileChange = (e, side) => {
@@ -143,105 +211,79 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
     if (!file) return;
     const preview = URL.createObjectURL(file);
     if (side === "front") {
-      setSellerEditForm(prev => ({ ...prev, front: file }));
+      setSellerApprovalForm(prev => ({ ...prev, front: file }));
       setFrontPreview(preview);
     } else {
-      setSellerEditForm(prev => ({ ...prev, back: file }));
+      setSellerApprovalForm(prev => ({ ...prev, back: file }));
       setBackPreview(preview);
     }
   };
 
-  // ── Seller: save — name & business name immediately, rest needs approval ──
-  const handleSaveSellerEdit = async () => {
+  const handleSaveSellerApproval = async () => {
     try {
       setSaving(true);
 
-      // 1. Save name immediately to profiles
-      const { error: nameError } = await supabase
-        .from("profiles")
-        .update({ name: sellerEditForm.name })
-        .eq("id", user.id);
-      if (nameError) { alert("Error updating name"); return; }
+      let frontURL = pendingChange?.pending_cnic_front || null;
+      let backURL = pendingChange?.pending_cnic_back || null;
 
-      // 2. Save business name immediately to sellers
-      const { error: bizError } = await supabase
-        .from("sellers")
-        .update({ business_name: sellerEditForm.business_name })
-        .eq("user_id", user.id);
-      if (bizError) { alert("Error updating business name"); return; }
-
-      // 3. Upload CNIC images if changed
-      let frontURL = pendingChange?.pending_cnic_front || seller?.cnic_front || null;
-      let backURL = pendingChange?.pending_cnic_back || seller?.cnic_back || null;
-
-      if (sellerEditForm.front) {
+      if (sellerApprovalForm.front) {
         const frontPath = `sellers/${user.id}/front_pending`;
         await supabase.storage.from("cnic-images")
-          .upload(frontPath, sellerEditForm.front, { upsert: true });
-        const { data } = supabase.storage.from("cnic-images").getPublicUrl(frontPath);
-        frontURL = data.publicUrl;
+          .upload(frontPath, sellerApprovalForm.front, { upsert: true });
+        frontURL = frontPath;
       }
 
-      if (sellerEditForm.back) {
+      if (sellerApprovalForm.back) {
         const backPath = `sellers/${user.id}/back_pending`;
         await supabase.storage.from("cnic-images")
-          .upload(backPath, sellerEditForm.back, { upsert: true });
-        const { data } = supabase.storage.from("cnic-images").getPublicUrl(backPath);
-        backURL = data.publicUrl;
+          .upload(backPath, sellerApprovalForm.back, { upsert: true });
+        backURL = backPath;
       }
 
-      // 4. Save pending fields (phone, city, postal code, address, cnic)
       const pendingPayload = {
         user_id: user.id,
         role: "seller",
         change_type: "all",
-        pending_phone_no: sellerEditForm.phone_no,
-        pending_city: sellerEditForm.city,
-        pending_postal_code: sellerEditForm.postal_code,
-        pending_address: sellerEditForm.address,
-        pending_cnic_number: sellerEditForm.cnic_number,
+        pending_phone_no: sellerApprovalForm.phone_no,
+        pending_city: sellerApprovalForm.city,
+        pending_postal_code: sellerApprovalForm.postal_code,
+        pending_address: sellerApprovalForm.address,
+        pending_cnic_number: sellerApprovalForm.cnic_number,
         pending_cnic_front: frontURL,
         pending_cnic_back: backURL,
         status: "pending",
       };
 
       if (pendingChange) {
-        // Update existing pending request
         const { error } = await supabase
           .from("pending_changes")
           .update(pendingPayload)
           .eq("id", pendingChange.id);
         if (error) { alert("Error submitting changes"); console.error(error); return; }
       } else {
-        // Insert new pending request
         const { error } = await supabase
           .from("pending_changes")
           .insert(pendingPayload);
         if (error) { alert("Error submitting changes"); console.error(error); return; }
       }
 
-      // 5. Notify admin
+      // Notify admin
       const { data: adminData } = await supabase
         .from("profiles").select("id").eq("role", "admin").single();
       if (adminData) {
         await supabase.from("notifications").insert({
           user_id: adminData.id,
           title: "Seller Profile Update Request",
-          message: `A seller has submitted updated profile and CNIC information for approval.`,
+          message: "A seller has submitted updated contact and CNIC information for approval.",
           type: "approval",
           notification_for: "admin",
-          is_read: false
+          is_read: false,
         });
       }
 
-      // 6. Update local state immediately for name and business name
-      setProfile(prev => ({ ...prev, name: sellerEditForm.name }));
-      setSeller(prev => ({ ...prev, business_name: sellerEditForm.business_name }));
-
-      alert("Name and business name updated. Other changes submitted for admin approval.");
-      setShowSellerEditModal(false);
+      alert("Changes submitted for admin approval.");
+      setShowSellerApprovalEdit(false);
       fetchAllData();
-
     } catch (err) {
       console.error(err);
       alert("Something went wrong");
@@ -257,8 +299,8 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
       front: null,
       back: null,
     });
-    setBuyerFrontPreview(pendingChange?.pending_cnic_front || buyer?.cnic_front || null);
-    setBuyerBackPreview(pendingChange?.pending_cnic_back || buyer?.cnic_back || null);
+    setBuyerFrontPreview(null);
+    setBuyerBackPreview(null);
     setShowCnicEdit(true);
   };
 
@@ -279,23 +321,21 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
     try {
       setSaving(true);
 
-      let frontURL = pendingChange?.pending_cnic_front || buyer?.cnic_front || null;
-      let backURL = pendingChange?.pending_cnic_back || buyer?.cnic_back || null;
+      let frontURL = pendingChange?.pending_cnic_front || null;
+      let backURL = pendingChange?.pending_cnic_back || null;
 
       if (cnicForm.front) {
         const frontPath = `buyers/${user.id}/front_pending`;
         await supabase.storage.from("cnic-images")
           .upload(frontPath, cnicForm.front, { upsert: true });
-        const { data } = supabase.storage.from("cnic-images").getPublicUrl(frontPath);
-        frontURL = data.publicUrl;
+        frontURL = frontPath;
       }
 
       if (cnicForm.back) {
         const backPath = `buyers/${user.id}/back_pending`;
         await supabase.storage.from("cnic-images")
           .upload(backPath, cnicForm.back, { upsert: true });
-        const { data } = supabase.storage.from("cnic-images").getPublicUrl(backPath);
-        backURL = data.publicUrl;
+        backURL = backPath;
       }
 
       const pendingPayload = {
@@ -321,7 +361,6 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
         if (error) { alert("Error submitting CNIC update"); return; }
       }
 
-      // Notify admin
       const { data: adminData } = await supabase
         .from("profiles").select("id").eq("role", "admin").single();
       if (adminData) {
@@ -331,14 +370,13 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
           message: "A buyer has submitted updated CNIC information for approval.",
           type: "approval",
           notification_for: "admin",
-          is_read: false
+          is_read: false,
         });
       }
 
-      alert("CNIC update submitted for admin approval. Your current info stays active until approved.");
+      alert("CNIC update submitted for admin approval.");
       setShowCnicEdit(false);
       fetchAllData();
-
     } catch (err) {
       console.error(err);
       alert("Something went wrong");
@@ -383,7 +421,6 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
 
       <div className="profile-container">
 
-        {/* ── Top Section ── */}
         <div className="profile-avatar-section">
           <div className="profile-initial-avatar">{getInitial()}</div>
           <div className="profile-name-block">
@@ -399,7 +436,7 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
 
         <div className="profile-cards">
 
-          {/* ══════ ADMIN VIEW ══════ */}
+          {/* ══ ADMIN VIEW ══ */}
           {role === "admin" && (
             <div className="profile-card">
               <div className="profile-card-header">
@@ -413,26 +450,35 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
             </div>
           )}
 
-          {/* ══════ SELLER VIEW ══════ */}
+          {/* ══ SELLER VIEW ══ */}
           {role === "seller" && (
             <>
+              {/* Card 1 — Name & Business (saves immediately) */}
               <div className="profile-card">
                 <div className="profile-card-header">
-                  <h3>Personal & Business Information</h3>
-                  <button className="edit-btn" onClick={openSellerEdit}>
+                  <h3>Basic Information</h3>
+                  <button className="edit-btn" onClick={openSellerBasicEdit}>
                     <FaEdit /> Edit
                   </button>
                 </div>
+                <ProfileField icon={<FaUser />} label="Full Name" value={profile?.name} />
+                <ProfileField icon={<FaEnvelope />} label="Email Address" value={user?.email} />
+                <ProfileField icon={<FaBuilding />} label="Business Name" value={seller?.business_name} />
+              </div>
 
+              {/* Card 2 — Contact & Identity (requires admin approval) */}
+              <div className="profile-card">
+                <div className="profile-card-header">
+                  <h3>Contact & Identity</h3>
+                  <button className="edit-btn" onClick={openSellerApprovalEdit}>
+                    <FaEdit /> Edit
+                  </button>
+                </div>
                 {hasPending && (
                   <div className="cnic-pending-notice">
                     ⏳ You have changes pending admin approval.
                   </div>
                 )}
-
-                <ProfileField icon={<FaUser />} label="Full Name" value={profile?.name} />
-                <ProfileField icon={<FaEnvelope />} label="Email Address" value={user?.email} />
-                <ProfileField icon={<FaBuilding />} label="Business Name" value={seller?.business_name} />
                 <ProfileField icon={<FaPhone />} label="Phone Number" value={seller?.phone_no} />
                 <ProfileField icon={<FaMapMarkerAlt />} label="City" value={seller?.city} />
                 <ProfileField icon={<FaMapMarkerAlt />} label="Postal Code" value={seller?.postal_code} />
@@ -446,6 +492,7 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
                 </div>
               </div>
 
+              {/* Card 3 — CNIC */}
               <div className="profile-card">
                 <div className="profile-card-header">
                   <h3>Identity Verification</h3>
@@ -456,12 +503,12 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
                   </div>
                 )}
                 <ProfileField icon={<FaIdCard />} label="CNIC Number" value={seller?.cnic_number} mono />
-                <CnicImages front={seller?.cnic_front} back={seller?.cnic_back} />
+                <CnicImages front={sellerCnicUrls.front} back={sellerCnicUrls.back} />
               </div>
             </>
           )}
 
-          {/* ══════ BUYER VIEW ══════ */}
+          {/* ══ BUYER VIEW ══ */}
           {role === "buyer" && (
             <>
               <div className="profile-card">
@@ -495,12 +542,12 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
                   </div>
                 )}
                 <ProfileField icon={<FaIdCard />} label="CNIC Number" value={buyer?.cnic_number} mono />
-                <CnicImages front={buyer?.cnic_front} back={buyer?.cnic_back} />
+                <CnicImages front={buyerCnicUrls.front} back={buyerCnicUrls.back} />
               </div>
             </>
           )}
 
-          {/* ══════ USER VIEW ══════ */}
+          {/* ══ USER VIEW ══ */}
           {(role === "user" || !role) && (
             <>
               <div className="profile-card">
@@ -539,7 +586,7 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
         </button>
       </div>
 
-      {/* ══════ ADMIN / BUYER / USER — Name Edit Modal ══════ */}
+      {/* ══ Name Edit Modal (all roles) ══ */}
       {showPersonalEdit && (
         <div className="profile-modal-overlay" onClick={() => setShowPersonalEdit(false)}>
           <div className="profile-modal" onClick={e => e.stopPropagation()}>
@@ -570,60 +617,73 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
         </div>
       )}
 
-      {/* ══════ SELLER — Combined Edit Modal ══════ */}
-      {showSellerEditModal && (
-        <div className="profile-modal-overlay" onClick={() => setShowSellerEditModal(false)}>
-          <div className="profile-modal profile-modal-wide" onClick={e => e.stopPropagation()}>
-            <button className="profile-modal-close" onClick={() => setShowSellerEditModal(false)}>
+      {/* ══ Seller: Edit 1 — Name + Business Name (saves immediately) ══ */}
+      {showSellerBasicEdit && (
+        <div className="profile-modal-overlay" onClick={() => setShowSellerBasicEdit(false)}>
+          <div className="profile-modal" onClick={e => e.stopPropagation()}>
+            <button className="profile-modal-close" onClick={() => setShowSellerBasicEdit(false)}>
               <FaTimes />
             </button>
-            <h3 className="profile-modal-title">Edit Profile</h3>
-            <p className="profile-modal-subtitle">
-              Name and business name save immediately. Phone, address and CNIC changes require admin approval.
-            </p>
-
+            <h3 className="profile-modal-title">Edit Basic Information</h3>
+            <p className="profile-modal-subtitle">These changes save immediately.</p>
             <div className="profile-modal-form">
-
-              {/* Saves immediately */}
-              <div className="profile-modal-section-label">
-                Saves Immediately
+              <div className="profile-modal-field">
+                <label>Full Name</label>
+                <input
+                  className="profile-modal-input"
+                  value={sellerBasicForm.name || ""}
+                  onChange={e => setSellerBasicForm(p => ({ ...p, name: e.target.value }))}
+                  placeholder="Full name"
+                />
               </div>
-
-              <div className="profile-modal-row">
-                <div className="profile-modal-field">
-                  <label>Full Name</label>
-                  <input className="profile-modal-input"
-                    value={sellerEditForm.name || ""}
-                    onChange={e => setSellerEditForm(p => ({ ...p, name: e.target.value }))}
-                    placeholder="Full name" />
-                </div>
-                <div className="profile-modal-field">
-                  <label>Business Name</label>
-                  <input className="profile-modal-input"
-                    value={sellerEditForm.business_name || ""}
-                    onChange={e => setSellerEditForm(p => ({ ...p, business_name: e.target.value }))}
-                    placeholder="Business name" />
-                </div>
+              <div className="profile-modal-field">
+                <label>Business Name</label>
+                <input
+                  className="profile-modal-input"
+                  value={sellerBasicForm.business_name || ""}
+                  onChange={e => setSellerBasicForm(p => ({ ...p, business_name: e.target.value }))}
+                  placeholder="Business name"
+                />
               </div>
-
-              {/* Needs approval */}
-              <div className="profile-modal-section-label">
-                Requires Admin Approval
+              <div className="profile-modal-actions">
+                <button className="profile-modal-cancel" onClick={() => setShowSellerBasicEdit(false)}>
+                  Cancel
+                </button>
+                <button className="profile-modal-save" onClick={handleSaveSellerBasic} disabled={saving}>
+                  {saving ? "Saving..." : "Save"}
+                </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ Seller: Edit 2 — Contact & CNIC (requires admin approval) ══ */}
+      {showSellerApprovalEdit && (
+        <div className="profile-modal-overlay" onClick={() => setShowSellerApprovalEdit(false)}>
+          <div className="profile-modal profile-modal-wide" onClick={e => e.stopPropagation()}>
+            <button className="profile-modal-close" onClick={() => setShowSellerApprovalEdit(false)}>
+              <FaTimes />
+            </button>
+            <h3 className="profile-modal-title">Edit Contact & Identity</h3>
+            <p className="profile-modal-subtitle">
+              These changes require admin approval before taking effect.
+            </p>
+            <div className="profile-modal-form">
 
               <div className="profile-modal-row">
                 <div className="profile-modal-field">
                   <label>Phone Number</label>
                   <input className="profile-modal-input"
-                    value={sellerEditForm.phone_no || ""}
-                    onChange={e => setSellerEditForm(p => ({ ...p, phone_no: e.target.value }))}
+                    value={sellerApprovalForm.phone_no || ""}
+                    onChange={e => setSellerApprovalForm(p => ({ ...p, phone_no: e.target.value }))}
                     placeholder="03XX-XXXXXXX" />
                 </div>
                 <div className="profile-modal-field">
                   <label>City</label>
                   <input className="profile-modal-input"
-                    value={sellerEditForm.city || ""}
-                    onChange={e => setSellerEditForm(p => ({ ...p, city: e.target.value }))}
+                    value={sellerApprovalForm.city || ""}
+                    onChange={e => setSellerApprovalForm(p => ({ ...p, city: e.target.value }))}
                     placeholder="City" />
                 </div>
               </div>
@@ -632,34 +692,31 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
                 <div className="profile-modal-field">
                   <label>Postal Code</label>
                   <input className="profile-modal-input"
-                    value={sellerEditForm.postal_code || ""}
-                    onChange={e => setSellerEditForm(p => ({ ...p, postal_code: e.target.value }))}
+                    value={sellerApprovalForm.postal_code || ""}
+                    onChange={e => setSellerApprovalForm(p => ({ ...p, postal_code: e.target.value }))}
                     placeholder="Postal code" />
                 </div>
                 <div className="profile-modal-field">
                   <label>Address</label>
                   <input className="profile-modal-input"
-                    value={sellerEditForm.address || ""}
-                    onChange={e => setSellerEditForm(p => ({ ...p, address: e.target.value }))}
+                    value={sellerApprovalForm.address || ""}
+                    onChange={e => setSellerApprovalForm(p => ({ ...p, address: e.target.value }))}
                     placeholder="Full address" />
                 </div>
               </div>
 
-              {/* CNIC */}
-              <div className="profile-modal-section-label">
-                Identity Verification
-              </div>
+              <div className="profile-modal-section-label">Identity Verification</div>
 
               <div className="profile-modal-field">
                 <label>CNIC Number</label>
                 <input
                   className="profile-modal-input cnic-number-input"
-                  value={sellerEditForm.cnic_number || ""}
+                  value={sellerApprovalForm.cnic_number || ""}
                   onChange={e => {
                     let val = e.target.value.replace(/[^0-9]/g, "");
                     if (val.length > 5 && val.length <= 12) val = val.slice(0, 5) + "-" + val.slice(5);
                     else if (val.length > 12) val = val.slice(0, 5) + "-" + val.slice(5, 12) + "-" + val.slice(12, 13);
-                    setSellerEditForm(p => ({ ...p, cnic_number: val }));
+                    setSellerApprovalForm(p => ({ ...p, cnic_number: val }));
                   }}
                   maxLength={15}
                   placeholder="XXXXX-XXXXXXX-X"
@@ -669,7 +726,7 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
               <div className="profile-modal-upload-row">
                 <div className="profile-modal-upload-box">
                   <label>CNIC Front</label>
-                  <label className="profile-modal-upload-area" htmlFor="seller-edit-front">
+                  <label className="profile-modal-upload-area" htmlFor="seller-approval-front">
                     {frontPreview ? (
                       <>
                         <img src={frontPreview} alt="Front" className="profile-modal-upload-preview" />
@@ -685,14 +742,14 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
                       </>
                     )}
                   </label>
-                  <input id="seller-edit-front" type="file" accept="image/*"
+                  <input id="seller-approval-front" type="file" accept="image/*"
                     style={{ display: "none" }}
                     onChange={e => handleSellerFileChange(e, "front")} />
                 </div>
 
                 <div className="profile-modal-upload-box">
                   <label>CNIC Back</label>
-                  <label className="profile-modal-upload-area" htmlFor="seller-edit-back">
+                  <label className="profile-modal-upload-area" htmlFor="seller-approval-back">
                     {backPreview ? (
                       <>
                         <img src={backPreview} alt="Back" className="profile-modal-upload-preview" />
@@ -708,27 +765,26 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
                       </>
                     )}
                   </label>
-                  <input id="seller-edit-back" type="file" accept="image/*"
+                  <input id="seller-approval-back" type="file" accept="image/*"
                     style={{ display: "none" }}
                     onChange={e => handleSellerFileChange(e, "back")} />
                 </div>
               </div>
 
               <div className="profile-modal-actions">
-                <button className="profile-modal-cancel" onClick={() => setShowSellerEditModal(false)}>
+                <button className="profile-modal-cancel" onClick={() => setShowSellerApprovalEdit(false)}>
                   Cancel
                 </button>
-                <button className="profile-modal-save" onClick={handleSaveSellerEdit} disabled={saving}>
-                  {saving ? "Submitting..." : "Save & Submit"}
+                <button className="profile-modal-save" onClick={handleSaveSellerApproval} disabled={saving}>
+                  {saving ? "Submitting..." : "Submit for Approval"}
                 </button>
               </div>
-
             </div>
           </div>
         </div>
       )}
 
-      {/* ══════ BUYER — CNIC Edit Modal ══════ */}
+      {/* ══ Buyer: CNIC Edit Modal ══ */}
       {showCnicEdit && (
         <div className="profile-modal-overlay" onClick={() => setShowCnicEdit(false)}>
           <div className="profile-modal" onClick={e => e.stopPropagation()}>
@@ -737,9 +793,8 @@ const { user, loading: authLoading, refreshProfile } = useAuthContext();
             </button>
             <h3 className="profile-modal-title">Edit CNIC Information</h3>
             <p className="profile-modal-subtitle">
-              Changes will be submitted for admin approval. Your current info stays active until approved.
+              Changes will be submitted for admin approval.
             </p>
-
             <div className="profile-modal-form">
               <div className="profile-modal-field">
                 <label>CNIC Number</label>
@@ -840,13 +895,19 @@ const CnicImages = ({ front, back }) => (
     <div className="cnic-image-block">
       <label>Front Side</label>
       <div className="cnic-img-wrapper">
-        {front ? <img src={front} alt="CNIC Front" className="cnic-img" /> : <div className="cnic-placeholder">No image</div>}
+        {front
+          ? <img src={front} alt="CNIC Front" className="cnic-img" />
+          : <div className="cnic-placeholder">No image</div>
+        }
       </div>
     </div>
     <div className="cnic-image-block">
       <label>Back Side</label>
       <div className="cnic-img-wrapper">
-        {back ? <img src={back} alt="CNIC Back" className="cnic-img" /> : <div className="cnic-placeholder">No image</div>}
+        {back
+          ? <img src={back} alt="CNIC Back" className="cnic-img" />
+          : <div className="cnic-placeholder">No image</div>
+        }
       </div>
     </div>
   </div>
