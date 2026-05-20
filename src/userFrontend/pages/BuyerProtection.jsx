@@ -1,7 +1,5 @@
 import { useLayoutEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import {
-  FaArrowLeft,
   FaUserShield,
   FaLock,
   FaEye,
@@ -14,9 +12,6 @@ import "../styles/common.css";
 import "../styles/infoPages.css";
 
 const BuyerProtection = () => {
-
-  const navigate = useNavigate();
-
   useLayoutEffect(() => {
     window.scrollTo({ top: 0, left: 0 });
   }, []);

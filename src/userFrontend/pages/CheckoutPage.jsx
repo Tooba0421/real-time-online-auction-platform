@@ -229,48 +229,6 @@ const CheckoutPage = () => {
                 </div>
 
               </div>
-
-
-              {/* PAYMENT METHOD */}
-
-              <div className="card">
-
-                <h3>Payment Method</h3>
-
-                <label className="radio">
-
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="bank"
-                    checked={paymentMethod === "bank"}
-                    onChange={(e) =>
-                      setPaymentMethod(e.target.value)
-                    }
-                  />
-
-                  Bank Transfer
-
-                </label>
-
-                <label className="radio">
-
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="card"
-                    checked={paymentMethod === "card"}
-                    onChange={(e) =>
-                      setPaymentMethod(e.target.value)
-                    }
-                  />
-
-                  Credit / Debit Card
-
-                </label>
-
-              </div>
-
             </div>
 
 

@@ -1,7 +1,5 @@
 import { useLayoutEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import {
-  FaArrowLeft,
   FaUserPlus,
   FaSearch,
   FaGavel,
@@ -15,8 +13,6 @@ import "../styles/common.css";
 import "../styles/infoPages.css";
 
 const HowToBid = () => {
-
-  const navigate = useNavigate();
 
   useLayoutEffect(() => {
     window.scrollTo({ top: 0, left: 0 });

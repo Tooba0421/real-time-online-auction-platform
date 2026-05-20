@@ -1,5 +1,4 @@
 import { useState, useLayoutEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import {
   FaUsers, FaShieldAlt, FaChartLine,
   FaGavel, FaBolt, FaHandshake
@@ -14,7 +13,6 @@ import "../styles/common.css";
 import "../styles/infoPages.css";
 
 const BecomeSeller = () => {
-  const navigate = useNavigate();
   const [openSellerForm, setOpenSellerForm] = useState(false);
   const [checking, setChecking] = useState(false);
   const { user, profile } = useAuthContext();
