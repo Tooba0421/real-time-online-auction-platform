@@ -606,7 +606,7 @@ const AuctionManagement = ({ openCreateAuction }) => {
 
             <div className="modal-actions">
               <button
-                className="btn-secondary"
+                className="close-btn"
                 onClick={() => setEditAuction(null)}
                 disabled={saving}
               >
