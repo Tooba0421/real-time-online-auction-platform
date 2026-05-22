@@ -23,14 +23,12 @@ const ProfilePage = () => {
   const [role, setRole] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  // Modal visibility states
   const [showPersonalEdit, setShowPersonalEdit] = useState(false);
   const [showSellerBasicEdit, setShowSellerBasicEdit] = useState(false);
   const [showSellerApprovalEdit, setShowSellerApprovalEdit] = useState(false);
   const [showCnicEdit, setShowCnicEdit] = useState(false);
   const [showCnicModal, setShowCnicModal] = useState(false);
 
-  // Form states
   const [personalForm, setPersonalForm] = useState({});
   const [sellerBasicForm, setSellerBasicForm] = useState({});
   const [sellerApprovalForm, setSellerApprovalForm] = useState({});
@@ -40,7 +38,6 @@ const ProfilePage = () => {
   const [buyerFrontPreview, setBuyerFrontPreview] = useState(null);
   const [buyerBackPreview, setBuyerBackPreview] = useState(null);
 
-  // CNIC image URLs (signed)
   const [sellerCnicUrls, setSellerCnicUrls] = useState({ front: null, back: null });
   const [buyerCnicUrls, setBuyerCnicUrls] = useState({ front: null, back: null });
 
@@ -89,7 +86,6 @@ const ProfilePage = () => {
   const fetchAllData = async () => {
     try {
       setLoading(true);
-
       const { data: profileData } = await supabase
         .from("profiles").select("*").eq("id", user.id).single();
       setProfile(profileData);
@@ -162,15 +158,12 @@ const ProfilePage = () => {
   const handleSaveSellerBasic = async () => {
     try {
       setSaving(true);
-
-      // Update name in profiles
       const { error: nameError } = await supabase
         .from("profiles")
         .update({ name: sellerBasicForm.name })
         .eq("id", user.id);
       if (nameError) { alert("Error updating name"); return; }
 
-      // Update business name in sellers
       const { error: bizError } = await supabase
         .from("sellers")
         .update({ business_name: sellerBasicForm.business_name })
@@ -190,7 +183,7 @@ const ProfilePage = () => {
     }
   };
 
-  // ── Seller: Edit 2 — Phone, City, Postal, Address, CNIC (requires admin approval) ──
+  // ── Seller: Edit 2 — Contact & CNIC (requires admin approval) ──
   const openSellerApprovalEdit = () => {
     setSellerApprovalForm({
       phone_no: pendingChange?.pending_phone_no || seller?.phone_no || "",
@@ -201,8 +194,8 @@ const ProfilePage = () => {
       front: null,
       back: null,
     });
-    setFrontPreview(pendingChange?.pending_cnic_front || null);
-    setBackPreview(pendingChange?.pending_cnic_back || null);
+    setFrontPreview(null);
+    setBackPreview(null);
     setShowSellerApprovalEdit(true);
   };
 
@@ -223,21 +216,26 @@ const ProfilePage = () => {
     try {
       setSaving(true);
 
-      let frontURL = pendingChange?.pending_cnic_front || null;
-      let backURL = pendingChange?.pending_cnic_back || null;
+      // Store storage PATHS (not public URLs) — bucket is private
+      let frontPath = pendingChange?.pending_cnic_front || null;
+      let backPath = pendingChange?.pending_cnic_back || null;
 
       if (sellerApprovalForm.front) {
-        const frontPath = `sellers/${user.id}/front_pending`;
-        await supabase.storage.from("cnic-images")
-          .upload(frontPath, sellerApprovalForm.front, { upsert: true });
-        frontURL = frontPath;
+        const path = `sellers/${user.id}/front_pending`;
+        const { error: uploadError } = await supabase.storage
+          .from("cnic-images")
+          .upload(path, sellerApprovalForm.front, { upsert: true });
+        if (uploadError) { alert("Error uploading CNIC front"); return; }
+        frontPath = path; // store path, not URL
       }
 
       if (sellerApprovalForm.back) {
-        const backPath = `sellers/${user.id}/back_pending`;
-        await supabase.storage.from("cnic-images")
-          .upload(backPath, sellerApprovalForm.back, { upsert: true });
-        backURL = backPath;
+        const path = `sellers/${user.id}/back_pending`;
+        const { error: uploadError } = await supabase.storage
+          .from("cnic-images")
+          .upload(path, sellerApprovalForm.back, { upsert: true });
+        if (uploadError) { alert("Error uploading CNIC back"); return; }
+        backPath = path; // store path, not URL
       }
 
       const pendingPayload = {
@@ -249,8 +247,8 @@ const ProfilePage = () => {
         pending_postal_code: sellerApprovalForm.postal_code,
         pending_address: sellerApprovalForm.address,
         pending_cnic_number: sellerApprovalForm.cnic_number,
-        pending_cnic_front: frontURL,
-        pending_cnic_back: backURL,
+        pending_cnic_front: frontPath,
+        pending_cnic_back: backPath,
         status: "pending",
       };
 
@@ -292,7 +290,7 @@ const ProfilePage = () => {
     }
   };
 
-  // ── Buyer: CNIC edit ──
+  // ── Buyer: CNIC edit (requires admin approval) ──
   const openCnicEdit = () => {
     setCnicForm({
       cnic_number: pendingChange?.pending_cnic_number || buyer?.cnic_number || "",
@@ -321,21 +319,26 @@ const ProfilePage = () => {
     try {
       setSaving(true);
 
-      let frontURL = pendingChange?.pending_cnic_front || null;
-      let backURL = pendingChange?.pending_cnic_back || null;
+      // Store storage PATHS (not public URLs) — bucket is private
+      let frontPath = pendingChange?.pending_cnic_front || null;
+      let backPath = pendingChange?.pending_cnic_back || null;
 
       if (cnicForm.front) {
-        const frontPath = `buyers/${user.id}/front_pending`;
-        await supabase.storage.from("cnic-images")
-          .upload(frontPath, cnicForm.front, { upsert: true });
-        frontURL = frontPath;
+        const path = `buyers/${user.id}/front_pending`;
+        const { error: uploadError } = await supabase.storage
+          .from("cnic-images")
+          .upload(path, cnicForm.front, { upsert: true });
+        if (uploadError) { alert("Error uploading CNIC front"); return; }
+        frontPath = path; // store path, not URL
       }
 
       if (cnicForm.back) {
-        const backPath = `buyers/${user.id}/back_pending`;
-        await supabase.storage.from("cnic-images")
-          .upload(backPath, cnicForm.back, { upsert: true });
-        backURL = backPath;
+        const path = `buyers/${user.id}/back_pending`;
+        const { error: uploadError } = await supabase.storage
+          .from("cnic-images")
+          .upload(path, cnicForm.back, { upsert: true });
+        if (uploadError) { alert("Error uploading CNIC back"); return; }
+        backPath = path; // store path, not URL
       }
 
       const pendingPayload = {
@@ -343,8 +346,8 @@ const ProfilePage = () => {
         role: "buyer",
         change_type: "cnic",
         pending_cnic_number: cnicForm.cnic_number,
-        pending_cnic_front: frontURL,
-        pending_cnic_back: backURL,
+        pending_cnic_front: frontPath,
+        pending_cnic_back: backPath,
         status: "pending",
       };
 
@@ -361,6 +364,7 @@ const ProfilePage = () => {
         if (error) { alert("Error submitting CNIC update"); return; }
       }
 
+      // Notify admin
       const { data: adminData } = await supabase
         .from("profiles").select("id").eq("role", "admin").single();
       if (adminData) {
@@ -453,7 +457,7 @@ const ProfilePage = () => {
           {/* ══ SELLER VIEW ══ */}
           {role === "seller" && (
             <>
-              {/* Card 1 — Name & Business (saves immediately) */}
+              {/* Card 1 — Basic Info (saves immediately) */}
               <div className="profile-card">
                 <div className="profile-card-header">
                   <h3>Basic Information</h3>
@@ -586,7 +590,7 @@ const ProfilePage = () => {
         </button>
       </div>
 
-      {/* ══ Name Edit Modal (all roles) ══ */}
+      {/* ══ Name Edit Modal ══ */}
       {showPersonalEdit && (
         <div className="profile-modal-overlay" onClick={() => setShowPersonalEdit(false)}>
           <div className="profile-modal" onClick={e => e.stopPropagation()}>
@@ -617,7 +621,7 @@ const ProfilePage = () => {
         </div>
       )}
 
-      {/* ══ Seller: Edit 1 — Name + Business Name (saves immediately) ══ */}
+      {/* ══ Seller: Basic Edit Modal (Name + Business Name) ══ */}
       {showSellerBasicEdit && (
         <div className="profile-modal-overlay" onClick={() => setShowSellerBasicEdit(false)}>
           <div className="profile-modal" onClick={e => e.stopPropagation()}>
@@ -658,7 +662,7 @@ const ProfilePage = () => {
         </div>
       )}
 
-      {/* ══ Seller: Edit 2 — Contact & CNIC (requires admin approval) ══ */}
+      {/* ══ Seller: Contact & CNIC Edit Modal (requires admin approval) ══ */}
       {showSellerApprovalEdit && (
         <div className="profile-modal-overlay" onClick={() => setShowSellerApprovalEdit(false)}>
           <div className="profile-modal profile-modal-wide" onClick={e => e.stopPropagation()}>
@@ -793,7 +797,7 @@ const ProfilePage = () => {
             </button>
             <h3 className="profile-modal-title">Edit CNIC Information</h3>
             <p className="profile-modal-subtitle">
-              Changes will be submitted for admin approval.
+              Changes will be submitted for admin approval. Your current info stays active until approved.
             </p>
             <div className="profile-modal-form">
               <div className="profile-modal-field">
@@ -897,8 +901,7 @@ const CnicImages = ({ front, back }) => (
       <div className="cnic-img-wrapper">
         {front
           ? <img src={front} alt="CNIC Front" className="cnic-img" />
-          : <div className="cnic-placeholder">No image</div>
-        }
+          : <div className="cnic-placeholder">No image</div>}
       </div>
     </div>
     <div className="cnic-image-block">
@@ -906,8 +909,7 @@ const CnicImages = ({ front, back }) => (
       <div className="cnic-img-wrapper">
         {back
           ? <img src={back} alt="CNIC Back" className="cnic-img" />
-          : <div className="cnic-placeholder">No image</div>
-        }
+          : <div className="cnic-placeholder">No image</div>}
       </div>
     </div>
   </div>
