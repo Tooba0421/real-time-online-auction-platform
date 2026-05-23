@@ -13,7 +13,8 @@
 }
 
 /* Paused - Amber */
-.status-badge.paused {
+.status-badge.paused,
+.status-badge.user {
   background: rgba(245, 158, 11, 0.2);
   color: #B45309;
 }
@@ -31,8 +32,7 @@
 .status-badge.holding,
 .status-badge.closed,
 .status-badge.unsold,
-.status-badge.cancelled,
-.status-badge.user {
+.status-badge.cancelled {
   background: rgba(107, 114, 128, 0.2);
   color: var(--color-text-secondary);
 }

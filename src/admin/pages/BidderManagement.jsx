@@ -59,6 +59,10 @@ const BidderManagement = () => {
   const [reasonText, setReasonText] = useState("");
   const [processing, setProcessing] = useState(false);
 
+  const [suspendingBuyer, setSuspendingBuyer] = useState(null);
+  const [suspendReason, setSuspendReason] = useState("");
+  const [suspendModal, setSuspendModal] = useState(null);
+
   useEffect(() => {
     fetchBidders();
     fetchPendingEdits();
@@ -528,6 +532,80 @@ const BidderManagement = () => {
     }
   };
 
+  const handleSuspendToggle = async () => {
+    if (!suspendReason.trim()) {
+      toast.error("Please write a reason");
+      return;
+    }
+
+    try {
+      setSuspendingBuyer(suspendModal.id);
+
+      const currentStatus = suspendModal.profiles?.status;
+      const newStatus = currentStatus === "suspended" ? "active" : "suspended";
+      const action = newStatus === "suspended" ? "suspend" : "activate";
+
+      // Step 1: Update profiles.status
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({ status: newStatus })
+        .eq("id", suspendModal.user_id);
+
+      if (profileError) {
+        toast.error(`Error ${action}ing buyer`);
+        console.error(profileError);
+        return;
+      }
+
+      // Step 2: Log admin action
+      await logAdminAction(
+        user.id,
+        newStatus === "suspended" ? "suspend" : "approve",
+        suspendModal.id,
+        "buyers",
+        suspendReason
+      );
+
+      // Step 3: Notify buyer
+      await supabase.from("notifications").insert({
+        user_id: suspendModal.user_id,
+        title: newStatus === "suspended"
+          ? "Account Suspended"
+          : "Account Reactivated",
+        message: newStatus === "suspended"
+          ? `Your bidder account has been suspended. Reason: ${suspendReason}`
+          : `Your bidder account has been reactivated. Reason: ${suspendReason}`,
+        type: "approval",
+        notification_for: "buyer",
+        is_read: false,
+      });
+
+      toast.success(
+        newStatus === "suspended"
+          ? `${suspendModal.name} suspended`
+          : `${suspendModal.name} reactivated`
+      );
+
+      // Step 4: Update local state
+      setApprovedBidders((prev) =>
+        prev.map((b) =>
+          b.id === suspendModal.id
+            ? { ...b, profiles: { ...b.profiles, status: newStatus } }
+            : b
+        )
+      );
+
+      setSuspendModal(null);
+      setSuspendReason("");
+
+    } catch (err) {
+      console.error(err);
+      toast.error("Something went wrong");
+    } finally {
+      setSuspendingBuyer(null);
+    }
+  };
+
   const formatDate = (dateStr) => {
     if (!dateStr) return "—";
     return new Date(dateStr).toLocaleDateString("en-PK", {
@@ -734,6 +812,7 @@ const BidderManagement = () => {
                   <th>Total Bids</th>
                   <th>Auctions Won</th>
                   <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -748,6 +827,17 @@ const BidderManagement = () => {
                       <td>{buyer.auctionsWon}</td>
                       <td>
                         <StatusBadge label="Approved" type="approved" />
+                      </td>
+                      <td className="actions">   {/* ← ADD THIS */}
+                        <ActionButton
+                          label={buyer.profiles?.status === "suspended" ? "Activate" : "Suspend"}
+                          variant={buyer.profiles?.status === "suspended" ? "success" : "danger"}
+                          onClick={() => {
+                            setSuspendModal(buyer);
+                            setSuspendReason("");
+                          }}
+                          disabled={suspendingBuyer === buyer.id}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -880,44 +970,44 @@ const BidderManagement = () => {
 
             {(selectedEdit.pending_cnic_front ||
               selectedEdit.pending_cnic_back) && (
-              <>
-                <p
-                  style={{
-                    fontWeight: "600", marginBottom: "10px", fontSize: "14px",
-                  }}
-                >
-                  New CNIC Images
-                </p>
-                {editCnicLoading ? (
-                  <div
+                <>
+                  <p
                     style={{
-                      textAlign: "center", padding: "20px", color: "#999",
+                      fontWeight: "600", marginBottom: "10px", fontSize: "14px",
                     }}
                   >
-                    Loading CNIC images...
-                  </div>
-                ) : (
-                  <div className="cnic-images" style={{ marginBottom: "16px" }}>
-                    <div>
-                      <p>Front Side</p>
-                      {editCnicUrls.front ? (
-                        <img src={editCnicUrls.front} alt="New CNIC Front" />
-                      ) : (
-                        <p style={{ color: "#999" }}>Not available</p>
-                      )}
+                    New CNIC Images
+                  </p>
+                  {editCnicLoading ? (
+                    <div
+                      style={{
+                        textAlign: "center", padding: "20px", color: "#999",
+                      }}
+                    >
+                      Loading CNIC images...
                     </div>
-                    <div>
-                      <p>Back Side</p>
-                      {editCnicUrls.back ? (
-                        <img src={editCnicUrls.back} alt="New CNIC Back" />
-                      ) : (
-                        <p style={{ color: "#999" }}>Not available</p>
-                      )}
+                  ) : (
+                    <div className="cnic-images" style={{ marginBottom: "16px" }}>
+                      <div>
+                        <p>Front Side</p>
+                        {editCnicUrls.front ? (
+                          <img src={editCnicUrls.front} alt="New CNIC Front" />
+                        ) : (
+                          <p style={{ color: "#999" }}>Not available</p>
+                        )}
+                      </div>
+                      <div>
+                        <p>Back Side</p>
+                        {editCnicUrls.back ? (
+                          <img src={editCnicUrls.back} alt="New CNIC Back" />
+                        ) : (
+                          <p style={{ color: "#999" }}>Not available</p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </>
-            )}
+                  )}
+                </>
+              )}
 
             <div
               style={{
@@ -1020,6 +1110,48 @@ const BidderManagement = () => {
                 disabled={processing}
               >
                 {processing ? "Processing..." : "Confirm"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {suspendModal && (
+        <div className="reason-modal-overlay">
+          <div className="reason-modal">
+            <h3>
+              {suspendModal.profiles?.status === "suspended"
+                ? "Activate Buyer"
+                : "Suspend Buyer"}
+            </h3>
+            <p style={{ fontSize: "13px", color: "#666", marginBottom: "8px" }}>
+              {suspendModal.profiles?.status === "suspended"
+                ? "Activating"
+                : "Suspending"}:{" "}
+              <strong>{suspendModal.name}</strong>
+            </p>
+            <textarea
+              placeholder="Write reason here..."
+              value={suspendReason}
+              onChange={(e) => setSuspendReason(e.target.value)}
+            />
+            <div className="modal-actions">
+              <button
+                className="cancel"
+                onClick={() => {
+                  setSuspendModal(null);
+                  setSuspendReason("");
+                }}
+                disabled={suspendingBuyer}
+              >
+                Cancel
+              </button>
+              <button
+                className="confirm"
+                onClick={handleSuspendToggle}
+                disabled={suspendingBuyer}
+              >
+                {suspendingBuyer ? "Processing..." : "Confirm"}
               </button>
             </div>
           </div>

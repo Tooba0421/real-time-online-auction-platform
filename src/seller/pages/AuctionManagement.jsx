@@ -27,11 +27,10 @@ const AuctionManagement = ({ openCreateAuction }) => {
   const [selectedResult, setSelectedResult] = useState(null);
   const [showReason, setShowReason] = useState(null);
 
-  // Edit modal state
   const [editAuction, setEditAuction] = useState(null);
   const [editForm, setEditForm] = useState({});
-  const [editImages, setEditImages] = useState([]); // existing images from DB
-  const [newImages, setNewImages] = useState([]);   // newly uploaded files
+  const [editImages, setEditImages] = useState([]);
+  const [newImages, setNewImages] = useState([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -70,7 +69,6 @@ const AuctionManagement = ({ openCreateAuction }) => {
         return;
       }
 
-      // Rejection reasons
       const productIds = data?.map((a) => a.products?.id).filter(Boolean) || [];
       let reasonMap = {};
       if (productIds.length > 0) {
@@ -82,7 +80,6 @@ const AuctionManagement = ({ openCreateAuction }) => {
         actionData?.forEach((a) => { reasonMap[a.target_id] = a.remarks; });
       }
 
-      // Winner names
       const endedWithWinner = data?.filter((a) => a.status === "ended" && a.winner_id) || [];
       let winnerMap = {};
       if (endedWithWinner.length > 0) {
@@ -94,7 +91,6 @@ const AuctionManagement = ({ openCreateAuction }) => {
         winnerData?.forEach((w) => { winnerMap[w.id] = w.profiles?.name || "—"; });
       }
 
-      // Order info
       const auctionIds = data?.map((a) => a.id) || [];
       let orderMap = {};
       if (auctionIds.length > 0) {
@@ -172,7 +168,6 @@ const AuctionManagement = ({ openCreateAuction }) => {
     } finally { setProcessing(null); }
   };
 
-  // Open edit modal — only for pending approval auctions
   const openEdit = (auction) => {
     if (auction.approval_status !== "pending") {
       toast.error("You can only edit auctions that are pending approval.");
@@ -190,7 +185,6 @@ const AuctionManagement = ({ openCreateAuction }) => {
       min_increment: auction.min_increment || "",
       base_price: auction.products?.base_price || "",
     });
-    // Load existing images
     setEditImages(auction.products?.product_images || []);
     setNewImages([]);
   };
@@ -198,13 +192,9 @@ const AuctionManagement = ({ openCreateAuction }) => {
   const handleNewImageChange = (e) => {
     const files = Array.from(e.target.files);
     const totalAfter = editImages.length + newImages.length + files.length;
-    if (totalAfter > 6) {
-      toast.error("Maximum 6 images allowed.");
-      return;
-    }
+    if (totalAfter > 6) { toast.error("Maximum 6 images allowed."); return; }
     const previews = files.map((file) => ({
-      file,
-      preview: URL.createObjectURL(file),
+      file, preview: URL.createObjectURL(file),
     }));
     setNewImages((prev) => [...prev, ...previews]);
   };
@@ -212,8 +202,7 @@ const AuctionManagement = ({ openCreateAuction }) => {
   const removeExistingImage = (index) => {
     const remaining = editImages.filter((_, i) => i !== index);
     if (remaining.length + newImages.length < 4) {
-      toast.error("You must have at least 4 images.");
-      return;
+      toast.error("You must have at least 4 images."); return;
     }
     setEditImages(remaining);
   };
@@ -221,8 +210,7 @@ const AuctionManagement = ({ openCreateAuction }) => {
   const removeNewImage = (index) => {
     const remaining = newImages.filter((_, i) => i !== index);
     if (editImages.length + remaining.length < 4) {
-      toast.error("You must have at least 4 images.");
-      return;
+      toast.error("You must have at least 4 images."); return;
     }
     setNewImages(remaining);
   };
@@ -230,12 +218,15 @@ const AuctionManagement = ({ openCreateAuction }) => {
   const handleSaveEdit = async () => {
     if (!editForm.title.trim()) { toast.error("Title is required"); return; }
     if (!editForm.category) { toast.error("Category is required"); return; }
-    if (!editForm.start_time || !editForm.end_time) { toast.error("Start and end time are required"); return; }
+    if (!editForm.start_time || !editForm.end_time) {
+      toast.error("Start and end time are required"); return;
+    }
     if (new Date(editForm.end_time) <= new Date(editForm.start_time)) {
       toast.error("End time must be after start time"); return;
     }
-    const totalImages = editImages.length + newImages.length;
-    if (totalImages < 4) { toast.error("At least 4 images are required"); return; }
+    if (editImages.length + newImages.length < 4) {
+      toast.error("At least 4 images are required"); return;
+    }
 
     try {
       setSaving(true);
@@ -243,7 +234,6 @@ const AuctionManagement = ({ openCreateAuction }) => {
       const productId = editAuction.products?.id;
       const auctionId = editAuction.id;
 
-      // Step 1: Update product fields
       const { error: productError } = await supabase
         .from("products")
         .update({
@@ -260,7 +250,6 @@ const AuctionManagement = ({ openCreateAuction }) => {
         return;
       }
 
-      // Step 2: Update auction fields
       const { error: auctionError } = await supabase
         .from("auctions")
         .update({
@@ -276,7 +265,6 @@ const AuctionManagement = ({ openCreateAuction }) => {
         return;
       }
 
-      // Step 3: Upload new images to storage
       const uploadedImages = [];
       for (let i = 0; i < newImages.length; i++) {
         const img = newImages[i];
@@ -294,11 +282,9 @@ const AuctionManagement = ({ openCreateAuction }) => {
         const { data: urlData } = supabase.storage
           .from("auction-images")
           .getPublicUrl(filePath);
-
         uploadedImages.push({ image_url: urlData.publicUrl, is_primary: false });
       }
 
-      // Step 4: Replace all product_images — delete old ones, insert current set
       await supabase.from("product_images").delete().eq("product_id", productId);
 
       const allImages = [
@@ -314,7 +300,6 @@ const AuctionManagement = ({ openCreateAuction }) => {
         })),
       ];
 
-      // Ensure first image is always primary
       if (allImages.length > 0) {
         allImages[0].is_primary = true;
         for (let i = 1; i < allImages.length; i++) allImages[i].is_primary = false;
@@ -440,7 +425,7 @@ const AuctionManagement = ({ openCreateAuction }) => {
                   <th>Product</th>
                   <th>Category</th>
                   <th>Base Price</th>
-                  <th>Highest Bid</th>
+                  <th>Current Highest Bid</th>
                   <th>Total Bids</th>
                   <th>Start Time</th>
                   <th>End Time</th>
@@ -458,7 +443,13 @@ const AuctionManagement = ({ openCreateAuction }) => {
                       <td>{a.products?.title || "—"}</td>
                       <td>{a.products?.category || "—"}</td>
                       <td>PKR {a.products?.base_price?.toLocaleString() || "—"}</td>
-                      <td>PKR {a.highest_bid?.toLocaleString() || 0}</td>
+                      <td>
+                        {/* highest_bid = current bid placed by highest bidder */}
+                        {a.highest_bid && a.highest_bid > 0
+                          ? `PKR ${a.highest_bid.toLocaleString()}`
+                          : <span style={{ color: "#999", fontSize: "13px" }}>No bids yet</span>
+                        }
+                      </td>
                       <td>{a.bids?.length || 0}</td>
                       <td>{formatDate(a.start_time)}</td>
                       <td>{formatDate(a.end_time)}</td>
@@ -476,7 +467,6 @@ const AuctionManagement = ({ openCreateAuction }) => {
                       </td>
                       <td className="actions">
 
-                        {/* Pending approval → can edit or cancel */}
                         {a.approval_status === "pending" && (
                           <>
                             <ActionButton label="Edit" variant="secondary"
@@ -486,7 +476,6 @@ const AuctionManagement = ({ openCreateAuction }) => {
                           </>
                         )}
 
-                        {/* Live */}
                         {a.status === "live" && a.approval_status === "approved" && (
                           <>
                             <ActionButton label="Pause" variant="secondary"
@@ -496,7 +485,6 @@ const AuctionManagement = ({ openCreateAuction }) => {
                           </>
                         )}
 
-                        {/* Paused */}
                         {a.status === "paused" && a.approval_status === "approved" && (
                           <>
                             {a.paused_by !== "admin" && (
@@ -508,19 +496,16 @@ const AuctionManagement = ({ openCreateAuction }) => {
                           </>
                         )}
 
-                        {/* Scheduled + approved → can only cancel */}
                         {a.status === "scheduled" && a.approval_status === "approved" && (
                           <ActionButton label="Cancel" variant="danger"
                             onClick={() => handleCancel(a)} disabled={processing === a.id} />
                         )}
 
-                        {/* Ended */}
                         {a.status === "ended" && (
                           <ActionButton label="View Result" variant="secondary"
                             onClick={() => setSelectedResult(a)} />
                         )}
 
-                        {/* Rejected */}
                         {a.approval_status === "rejected" && (
                           <ActionButton label="View Reason" variant="danger"
                             onClick={() => setShowReason(a.rejectionReason || "No reason provided")} />
@@ -546,33 +531,122 @@ const AuctionManagement = ({ openCreateAuction }) => {
         </div>
       </div>
 
-      {/* VIEW RESULT MODAL */}
+      {/* ── VIEW RESULT MODAL — styled ── */}
       {selectedResult && (
         <div className="modal-overlay" onClick={() => setSelectedResult(null)}>
           <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-            <h3>Auction Result</h3>
-            <div className="result-info">
-              {[
-                ["Product", selectedResult.products?.title || "—"],
-                ["Winner", selectedResult.winnerName || "No winner"],
-                ["Final Bid", `PKR ${selectedResult.highest_bid?.toLocaleString() || 0}`],
-                ["Total Bids", selectedResult.bids?.length || 0],
-                ["Ended At", formatDate(selectedResult.end_time)],
-                ["Order Status", selectedResult.orderInfo?.orderStatus || "No order yet"],
-                ["Payment Status", selectedResult.orderInfo?.paymentStatus || "No payment yet"],
-              ].map(([label, value]) => (
-                <div className="result-row" key={label}>
-                  <span className="result-label">{label}</span>
-                  <span className="result-value">{value}</span>
-                </div>
-              ))}
+
+            <h3 style={{ marginBottom: "4px" }}>Auction Result</h3>
+            <p style={{ fontSize: "13px", color: "#888", marginBottom: "20px" }}>
+              {selectedResult.products?.title}
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
+
+              {/* Winner */}
+              <div style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "12px 0", borderBottom: "1px solid #f0f0f0",
+              }}>
+                <span style={{ fontSize: "13px", color: "#888", fontWeight: "500" }}>Winner</span>
+                <span style={{ fontSize: "14px", fontWeight: "600", color: "#1a1a1a" }}>
+                  {selectedResult.winnerName || "No winner"}
+                </span>
+              </div>
+
+              {/* Final Bid */}
+              <div style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "12px 0", borderBottom: "1px solid #f0f0f0",
+              }}>
+                <span style={{ fontSize: "13px", color: "#888", fontWeight: "500" }}>Final Bid</span>
+                <span style={{
+                  fontSize: "16px", fontWeight: "700",
+                  color: selectedResult.highest_bid > 0 ? "#10b981" : "#999",
+                }}>
+                  {selectedResult.highest_bid > 0
+                    ? `PKR ${selectedResult.highest_bid.toLocaleString()}`
+                    : "No bids placed"
+                  }
+                </span>
+              </div>
+
+              {/* Total Bids */}
+              <div style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "12px 0", borderBottom: "1px solid #f0f0f0",
+              }}>
+                <span style={{ fontSize: "13px", color: "#888", fontWeight: "500" }}>Total Bids</span>
+                <span style={{
+                  fontSize: "14px", fontWeight: "600", color: "#1a1a1a",
+                  background: "#f3f4f6", padding: "2px 10px", borderRadius: "20px",
+                }}>
+                  {selectedResult.bids?.length || 0}
+                </span>
+              </div>
+
+              {/* Ended At */}
+              <div style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "12px 0", borderBottom: "1px solid #f0f0f0",
+              }}>
+                <span style={{ fontSize: "13px", color: "#888", fontWeight: "500" }}>Ended At</span>
+                <span style={{ fontSize: "13px", color: "#555" }}>
+                  {formatDate(selectedResult.end_time)}
+                </span>
+              </div>
+
+              {/* Order Status */}
+              <div style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "12px 0", borderBottom: "1px solid #f0f0f0",
+              }}>
+                <span style={{ fontSize: "13px", color: "#888", fontWeight: "500" }}>Order Status</span>
+                <span style={{
+                  fontSize: "13px", fontWeight: "600",
+                  color: selectedResult.orderInfo?.orderStatus === "confirmed" ? "#10b981"
+                    : selectedResult.orderInfo?.orderStatus ? "#f59e0b" : "#999",
+                }}>
+                  {selectedResult.orderInfo?.orderStatus
+                    ? selectedResult.orderInfo.orderStatus.charAt(0).toUpperCase() +
+                      selectedResult.orderInfo.orderStatus.slice(1)
+                    : "No order yet"
+                  }
+                </span>
+              </div>
+
+              {/* Payment Status */}
+              <div style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "12px 0",
+              }}>
+                <span style={{ fontSize: "13px", color: "#888", fontWeight: "500" }}>Payment Status</span>
+                <span style={{
+                  fontSize: "13px", fontWeight: "600",
+                  color: selectedResult.orderInfo?.paymentStatus === "paid" ? "#10b981"
+                    : selectedResult.orderInfo?.paymentStatus ? "#f59e0b" : "#999",
+                }}>
+                  {selectedResult.orderInfo?.paymentStatus
+                    ? selectedResult.orderInfo.paymentStatus.charAt(0).toUpperCase() +
+                      selectedResult.orderInfo.paymentStatus.slice(1)
+                    : "No payment yet"
+                  }
+                </span>
+              </div>
+
             </div>
-            <button className="create-btn" onClick={() => setSelectedResult(null)}>Close</button>
+
+            <div style={{ marginTop: "20px", display: "flex", justifyContent: "flex-end" }}>
+              <button className="create-btn" onClick={() => setSelectedResult(null)}>
+                Close
+              </button>
+            </div>
+
           </div>
         </div>
       )}
 
-      {/* EDIT MODAL — full edit, only when approval_status === 'pending' */}
+      {/* EDIT MODAL */}
       {editAuction && (
         <div className="modal-overlay" onClick={() => setEditAuction(null)}>
           <div className="modal-box modal-box-wide" onClick={(e) => e.stopPropagation()}>
@@ -583,14 +657,12 @@ const AuctionManagement = ({ openCreateAuction }) => {
 
             <div className="edit-form">
 
-              {/* Title */}
               <div className="edit-field">
                 <label>Title *</label>
                 <input type="text" className="form-input" value={editForm.title}
                   onChange={(e) => setEditForm((p) => ({ ...p, title: e.target.value }))} />
               </div>
 
-              {/* Category */}
               <div className="edit-field">
                 <label>Category *</label>
                 <select className="form-select" value={editForm.category}
@@ -611,47 +683,42 @@ const AuctionManagement = ({ openCreateAuction }) => {
                 </select>
               </div>
 
-              {/* Description */}
               <div className="edit-field">
                 <label>Description</label>
                 <textarea className="form-textarea" value={editForm.description} rows={3}
                   onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))} />
               </div>
 
-              {/* Base Price */}
               <div className="edit-field">
                 <label>Starting Price (PKR)</label>
                 <input type="number" className="form-input" value={editForm.base_price}
                   onChange={(e) => setEditForm((p) => ({ ...p, base_price: e.target.value }))} />
               </div>
 
-              {/* Timing */}
               <div className="edit-field">
                 <label>Start Time *</label>
                 <input type="datetime-local" className="form-input" value={editForm.start_time}
                   onChange={(e) => setEditForm((p) => ({ ...p, start_time: e.target.value }))} />
               </div>
+
               <div className="edit-field">
                 <label>End Time *</label>
                 <input type="datetime-local" className="form-input" value={editForm.end_time}
                   onChange={(e) => setEditForm((p) => ({ ...p, end_time: e.target.value }))} />
               </div>
 
-              {/* Min Increment */}
               <div className="edit-field">
                 <label>Min Bid Increment (PKR)</label>
                 <input type="number" className="form-input" value={editForm.min_increment}
                   onChange={(e) => setEditForm((p) => ({ ...p, min_increment: e.target.value }))} />
               </div>
 
-              {/* Images */}
               <div className="edit-field">
                 <label>Product Images (Min 4, Max 6)</label>
                 <input type="file" accept="image/*" multiple className="form-input"
                   onChange={handleNewImageChange} />
 
                 <div className="image-grid" style={{ marginTop: "10px" }}>
-                  {/* Existing images */}
                   {editImages.map((img, i) => (
                     <div key={`existing-${i}`} className="image-preview-box">
                       <img src={img.image_url} alt={`existing ${i}`} />
@@ -660,7 +727,6 @@ const AuctionManagement = ({ openCreateAuction }) => {
                         onClick={() => removeExistingImage(i)}>x</button>
                     </div>
                   ))}
-                  {/* New images */}
                   {newImages.map((img, i) => (
                     <div key={`new-${i}`} className="image-preview-box">
                       <img src={img.preview} alt={`new ${i}`} />
@@ -694,8 +760,10 @@ const AuctionManagement = ({ openCreateAuction }) => {
         <div className="modal-overlay" onClick={() => setShowReason(null)}>
           <div className="modal-box" onClick={(e) => e.stopPropagation()}>
             <h3>Rejection Reason</h3>
-            <p style={{ color: "#555", lineHeight: "1.6" }}>{showReason}</p>
-            <button className="create-btn" onClick={() => setShowReason(null)}>Close</button>
+            <p style={{ color: "#555", lineHeight: "1.6", marginTop: "12px" }}>{showReason}</p>
+            <div style={{ marginTop: "20px", display: "flex", justifyContent: "flex-end" }}>
+              <button className="create-btn" onClick={() => setShowReason(null)}>Close</button>
+            </div>
           </div>
         </div>
       )}

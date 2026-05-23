@@ -378,7 +378,7 @@ const SellerManagement = () => {
 
       const { error: profileError } = await supabase
         .from("profiles")
-        .update({ role: "seller" })
+        .update({ role: "seller", id_verified: "approved"})
         .eq("id", seller.user_id);
 
       if (profileError) {

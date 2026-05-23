@@ -53,6 +53,31 @@ const HomePage = () => {
     fetchAuctions();
   }, []);
 
+  // ── Realtime subscription — refresh when any auction bid updates ──
+  useEffect(() => {
+    const channel = supabase
+      .channel("home-auctions-realtime")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "auctions" },
+        () => {
+          // Re-fetch so cards show updated highest_bid
+          fetchAuctions();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "bids" },
+        () => {
+          // Re-fetch bid counts when new bid placed
+          fetchAuctions();
+        }
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, []);
+
   const fetchAuctions = async () => {
     try {
       setLoadingAuctions(true);
@@ -101,12 +126,14 @@ const HomePage = () => {
         normalizeAuction(a, bidCounts)
       );
 
+      // Popular = most bids
       const popular = [...normalized]
         .sort((a, b) => b.totalBids - a.totalBids)
         .slice(0, 10);
 
+      // Latest = ending soonest
       const latest = [...normalized]
-        .sort((a, b) => new Date(b.end_time) - new Date(a.end_time))
+        .sort((a, b) => new Date(a.end_time) - new Date(b.end_time))
         .slice(0, 10);
 
       setPopularAuctions(popular);
@@ -247,9 +274,9 @@ const HomePage = () => {
         )}
       </section>
 
-      {/* Latest Auctions */}
+      {/* Latest Auctions (ending soonest) */}
       <section className="latest auction-section">
-        <h2 className="auction-heading">Latest Auctions</h2>
+        <h2 className="auction-heading">Ending Soon</h2>
 
         {loadingAuctions ? (
           <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>

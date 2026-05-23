@@ -2,7 +2,7 @@ import { useState, useRef, useLayoutEffect, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   FaArrowLeft, FaArrowRight, FaClock,
-  FaTag, FaGavel, FaBoxOpen
+  FaTag, FaGavel, FaBoxOpen, FaTrophy, FaTimesCircle
 } from "react-icons/fa";
 import toast from "react-hot-toast";
 import { useAuthContext } from "../../context/AuthContext";
@@ -53,7 +53,8 @@ const CountdownTimer = ({ timeLeft }) => {
   );
 };
 
-// ── useAuctionBySlug — fetch auction using product title slug ──
+// ── useAuctionBySlug ─────────────────────────────────────────
+// Fetches live OR ended auctions (so ended auctions don't show "not found")
 const useAuctionBySlug = (productSlug) => {
   const [auctionId, setAuctionId] = useState(null);
   const [slugLoading, setSlugLoading] = useState(true);
@@ -65,15 +66,16 @@ const useAuctionBySlug = (productSlug) => {
       try {
         setSlugLoading(true);
 
-        // Fetch all live auctions with product titles to match slug
+        // Fetch live AND ended auctions so winner can still view the page
         const { data, error } = await supabase
           .from("auctions")
           .select(`
             id,
+            status,
             products ( title )
           `)
-          .eq("status", "live")
-          .eq("approval_status", "approved");
+          .eq("approval_status", "approved")
+          .in("status", ["live", "paused", "ended"]);
 
         if (error || !data) return;
 
@@ -121,7 +123,6 @@ const useRelatedAuctions = (auctionId, category) => {
         .neq("id", auctionId)
         .limit(8);
 
-      // Same category first, then others
       const sorted = (data || []).sort((a, b) => {
         const aMatch = a.products?.category === category ? -1 : 1;
         const bMatch = b.products?.category === category ? -1 : 1;
@@ -145,7 +146,6 @@ const ProductDetailPage = () => {
   const { user, profile } = useAuthContext();
   const featuredRef = useRef();
 
-  // Support both old fake route (/product/:id) and new real route (/auction/:productSlug)
   const isRealAuction = !!productSlug;
 
   const { auctionId, slugLoading } = useAuctionBySlug(
@@ -159,6 +159,9 @@ const ProductDetailPage = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [bidAmount, setBidAmount] = useState("");
   const [bidding, setBidding] = useState(false);
+
+  // Winner check state
+  const [isWinner, setIsWinner] = useState(false);
 
   const [showLogin, setShowLogin] = useState(false);
   const [showSignup, setShowSignup] = useState(false);
@@ -189,7 +192,36 @@ const ProductDetailPage = () => {
   const minNextBid =
     (auction?.highest_bid || 0) + (auction?.min_increment || 0);
 
-  // ── Handle bid ─────────────────────────────────────────
+  // ── Check if current user is the auction winner ────────────
+  useEffect(() => {
+    if (!auction || !user || auction.status !== "ended" || !auction.winner_id) {
+      setIsWinner(false);
+      return;
+    }
+
+    const checkWinner = async () => {
+      try {
+        const { data } = await supabase
+          .from("buyers")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (data && data.id === auction.winner_id) {
+          setIsWinner(true);
+        } else {
+          setIsWinner(false);
+        }
+      } catch (err) {
+        console.error("Winner check error:", err);
+        setIsWinner(false);
+      }
+    };
+
+    checkWinner();
+  }, [auction, user]);
+
+  // ── Handle bid ─────────────────────────────────────────────
   const handleBid = async () => {
     // Step 1: Check login
     if (!user) {
@@ -268,7 +300,25 @@ const ProductDetailPage = () => {
     }
   };
 
-  // ── Old fake data route (keep working) ─────────────────
+  // ── Navigate to checkout ───────────────────────────────────
+  const handleGoToCheckout = () => {
+    navigate("/checkout", {
+      state: {
+        auctionId: auction.id,
+        title: product.title,
+        sellerName:
+          seller?.profiles?.name || seller?.business_name || "—",
+        sellerId: auction.seller_id,
+        sellerUserId: seller?.profiles?.id || seller?.user_id,
+        endDate: auction.end_time,
+        totalBids: bids.length,
+        winningBid: auction.highest_bid,
+        image: images[0] || null,
+      },
+    });
+  };
+
+  // ── Old fake data route ────────────────────────────────────
   if (!isRealAuction) {
     return (
       <>
@@ -285,7 +335,7 @@ const ProductDetailPage = () => {
     );
   }
 
-  // ── Loading ────────────────────────────────────────────
+  // ── Loading ────────────────────────────────────────────────
   if (slugLoading || loading) {
     return (
       <>
@@ -299,7 +349,7 @@ const ProductDetailPage = () => {
     );
   }
 
-  // ── Not found ──────────────────────────────────────────
+  // ── Not found ──────────────────────────────────────────────
   if (!auction || !product) {
     return (
       <>
@@ -315,6 +365,20 @@ const ProductDetailPage = () => {
       </>
     );
   }
+
+  // ── Determine status badge ─────────────────────────────────
+  const getStatusBadge = () => {
+    switch (auction?.status) {
+      case "live":
+        return <span className="live-badge">● Live</span>;
+      case "paused":
+        return <span className="paused-badge">⏸ Paused</span>;
+      case "ended":
+        return <span className="ended-badge">✓ Ended</span>;
+      default:
+        return null;
+    }
+  };
 
   return (
     <>
@@ -374,9 +438,9 @@ const ProductDetailPage = () => {
           {/* ── RIGHT: Product Info ── */}
           <div className="product-info">
 
-            {/* Badges */}
+            {/* Status + Category Badges */}
             <div className="auction-status-row">
-              <span className="live-badge">● Live</span>
+              {getStatusBadge()}
               <span className="category-badge">
                 <FaTag /> {product.category}
               </span>
@@ -400,9 +464,7 @@ const ProductDetailPage = () => {
               <div>
                 <span className="seller-label">Sold by</span>
                 <p className="seller-name">
-                  {seller?.profiles?.name ||
-                    seller?.business_name ||
-                    "—"}
+                  {seller?.profiles?.name || seller?.business_name || "—"}
                 </p>
               </div>
             </div>
@@ -410,7 +472,9 @@ const ProductDetailPage = () => {
             {/* Bid box */}
             <div className="bid-box">
               <div className="bid-box-left">
-                <p className="label">Current Highest Bid</p>
+                <p className="label">
+                  {auction.status === "ended" ? "Final Bid" : "Current Highest Bid"}
+                </p>
                 <h2 className="current-bid">
                   PKR {(auction.highest_bid || 0).toLocaleString()}
                 </h2>
@@ -421,47 +485,112 @@ const ProductDetailPage = () => {
               </div>
 
               <div className="bid-box-right">
-                <p className="label">
-                  <FaClock /> Time Remaining
+                {auction.status === "live" ? (
+                  <>
+                    <p className="label">
+                      <FaClock /> Time Remaining
+                    </p>
+                    <CountdownTimer timeLeft={timeLeft} />
+                  </>
+                ) : (
+                  <p className="label" style={{ color: "#6b7280" }}>
+                    {auction.status === "ended" ? "Auction Ended" : "Auction Paused"}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* ── AUCTION LIVE: Show bid input ── */}
+            {auction?.status === "live" && (
+              <>
+                <p className="min-bid-note">
+                  Minimum next bid:{" "}
+                  <strong>PKR {minNextBid.toLocaleString()}</strong>
+                  {auction.min_increment > 0 && (
+                    <span className="increment-note">
+                      {" "}(increment: PKR {auction.min_increment.toLocaleString()})
+                    </span>
+                  )}
                 </p>
-                <CountdownTimer timeLeft={timeLeft} />
+
+                <div className="bid-section">
+                  <div className="bid-input-wrapper">
+                    <span className="bid-currency">PKR</span>
+                    <input
+                      className="bid-input"
+                      type="number"
+                      placeholder={`Enter bid (min ${minNextBid.toLocaleString()})`}
+                      value={bidAmount}
+                      onChange={(e) => setBidAmount(e.target.value)}
+                      disabled={bidding}
+                    />
+                  </div>
+                  <button
+                    className="place-bid-btn"
+                    onClick={handleBid}
+                    disabled={bidding}
+                  >
+                    {bidding ? "Placing Bid..." : "Place Bid"}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* ── AUCTION PAUSED ── */}
+            {auction?.status === "paused" && (
+              <div className="auction-paused-box">
+                <p>⏸ This auction is temporarily paused. Check back soon.</p>
               </div>
-            </div>
+            )}
 
-            {/* Min bid note */}
-            <p className="min-bid-note">
-              Minimum next bid:{" "}
-              <strong>PKR {minNextBid.toLocaleString()}</strong>
-              {auction.min_increment > 0 && (
-                <span className="increment-note">
-                  {" "}
-                  (increment: PKR {auction.min_increment.toLocaleString()})
-                </span>
-              )}
-            </p>
+            {/* ── AUCTION ENDED with bids (has winner) ── */}
+            {auction?.status === "ended" && auction.winner_id && bids.length > 0 && (
+              <div className="auction-ended-box">
+                <div className="ended-icon">
+                  <FaTrophy style={{ color: "#D4AF37", fontSize: "24px" }} />
+                </div>
+                <h3>Auction Ended</h3>
+                <p>
+                  Final Price:{" "}
+                  <strong>PKR {auction.highest_bid?.toLocaleString()}</strong>
+                </p>
 
-            {/* Bid input */}
-            <div className="bid-section">
-              <div className="bid-input-wrapper">
-                <span className="bid-currency">PKR</span>
-                <input
-                  className="bid-input"
-                  type="number"
-                  placeholder={`Enter bid (min ${minNextBid.toLocaleString()})`}
-                  value={bidAmount}
-                  onChange={(e) => setBidAmount(e.target.value)}
-                  disabled={bidding}
-                />
+                {/* Show Pay Now button only to winner */}
+                {isWinner && (
+                  <div className="winner-checkout-box">
+                    <p style={{ color: "#10b981", fontWeight: "600", marginBottom: "12px" }}>
+                      🎉 Congratulations! You won this auction!
+                    </p>
+                    <button
+                      className="place-bid-btn"
+                      onClick={handleGoToCheckout}
+                    >
+                      Pay Now — PKR {auction.highest_bid?.toLocaleString()}
+                    </button>
+                  </div>
+                )}
+
+                {/* Show message to non-winner logged-in users */}
+                {user && !isWinner && profile?.role === "buyer" && (
+                  <p style={{ color: "#6b7280", fontSize: "14px", marginTop: "8px" }}>
+                    This auction has been won by another bidder.
+                  </p>
+                )}
               </div>
+            )}
 
-              <button
-                className="place-bid-btn"
-                onClick={handleBid}
-                disabled={bidding}
-              >
-                {bidding ? "Placing Bid..." : "Place Bid"}
-              </button>
-            </div>
+            {/* ── AUCTION ENDED with no bids ── */}
+            {auction?.status === "ended" && !auction.winner_id && (
+              <div className="auction-ended-box">
+                <div className="ended-icon">
+                  <FaTimesCircle style={{ color: "#6b7280", fontSize: "24px" }} />
+                </div>
+                <h3>Auction Ended</h3>
+                <p style={{ color: "#6b7280" }}>
+                  This auction ended with no bids placed.
+                </p>
+              </div>
+            )}
 
             {/* Base price */}
             <p className="price-info">
@@ -536,8 +665,7 @@ const ProductDetailPage = () => {
               <p className="no-bids">No bids placed yet. Be the first!</p>
             ) : (
               bids.map((bid, i) => {
-                const name =
-                  bid.buyers?.profiles?.name || "Anonymous";
+                const name = bid.buyers?.profiles?.name || "Anonymous";
                 const isHighest = i === 0;
                 return (
                   <div
@@ -566,13 +694,13 @@ const ProductDetailPage = () => {
                       </div>
                     </div>
                     <div
-                      className={`bid-amount ${
-                        isHighest ? "top-bid-amount" : ""
-                      }`}
+                      className={`bid-amount ${isHighest ? "top-bid-amount" : ""}`}
                     >
                       PKR {bid.bid_amount.toLocaleString()}
                       {isHighest && (
-                        <span className="highest-tag">Highest</span>
+                        <span className="highest-tag">
+                          {auction.status === "ended" ? "Winner" : "Highest"}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -591,18 +719,15 @@ const ProductDetailPage = () => {
             <div className="related-grid" ref={featuredRef}>
               {relatedAuctions.map((a) => {
                 const primaryImg =
-                  a.products?.product_images?.find(
-                    (img) => img.is_primary
-                  ) || a.products?.product_images?.[0];
+                  a.products?.product_images?.find((img) => img.is_primary) ||
+                  a.products?.product_images?.[0];
 
                 return (
                   <div
                     key={a.id}
                     className="related-card"
                     onClick={() =>
-                      navigate(
-                        `/auction/${toSlug(a.products?.title)}`
-                      )
+                      navigate(`/auction/${toSlug(a.products?.title)}`)
                     }
                   >
                     {primaryImg ? (
@@ -615,9 +740,7 @@ const ProductDetailPage = () => {
                       <div className="related-no-img">No Image</div>
                     )}
                     <div className="related-card-info">
-                      <p className="related-card-title">
-                        {a.products?.title}
-                      </p>
+                      <p className="related-card-title">{a.products?.title}</p>
                       <p className="related-card-bid">
                         PKR {(a.highest_bid || 0).toLocaleString()}
                       </p>

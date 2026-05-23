@@ -14,22 +14,13 @@ const SellerHeader = ({ title }) => {
     if (!user) return;
     fetchUnreadCount();
 
-    // Realtime subscription for new notifications
     const subscription = supabase
-      .channel('seller-notifications')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'notifications',
-        filter: `user_id=eq.${user.id}`
-      }, () => {
-        fetchUnreadCount();
-      })
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'notifications',
-        filter: `user_id=eq.${user.id}`
+      .channel(`seller-notifications-${user.id}`)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "notifications",
+        filter: `user_id=eq.${user.id}`,
       }, () => {
         fetchUnreadCount();
       })
@@ -40,13 +31,11 @@ const SellerHeader = ({ title }) => {
 
   const fetchUnreadCount = async () => {
     if (!user) return;
-
     const { count } = await supabase
-      .from('notifications')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-      .eq('is_read', false);
-
+      .from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("is_read", false);
     setUnreadCount(count || 0);
   };
 
@@ -63,18 +52,24 @@ const SellerHeader = ({ title }) => {
 
       <div className="header-right">
 
-        {/* Notification Bell */}
-        <div className="header-notification">
+        {/* Notification Bell — navigates to shared /notifications page */}
+        <div
+          className="header-notification"
+          onClick={() => navigate("/notifications")}
+          style={{ cursor: "pointer" }}
+        >
           <FaBell className="bell" />
           {unreadCount > 0 && (
-            <span className="notification-badge">{unreadCount}</span>
+            <span className="notification-badge">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
           )}
         </div>
 
-        {/* Profile — navigates to UserFrontend ProfilePage */}
+        {/* Profile */}
         <div
           className="header-profile"
-          onClick={() => navigate('/profile')}
+          onClick={() => navigate("/profile")}
           style={{ cursor: "pointer" }}
         >
           <div className="profile-initial-avatar-small">

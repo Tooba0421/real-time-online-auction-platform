@@ -2,16 +2,15 @@ import { useRef, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FaArrowLeft } from "react-icons/fa";
 import { useFavorites } from "../components/FavoritesContext";
-import { products } from "../data/products";
 import "../styles/header.css";
 import LoginModal from "./LoginModal";
 import SignupModal from "./SignupModal";
 import ForgotPasswordModal from "./ForgotPasswordModal";
 import { FaBell, FaHeart, FaSearch, FaBars } from "react-icons/fa";
 import { useAuthContext } from "../../context/AuthContext";
+import { supabase } from "../../supabase/supabase";
 
 const Header = () => {
-
   const navigate = useNavigate();
   const dropdownRef = useRef();
 
@@ -23,8 +22,40 @@ const Header = () => {
   const [showFav, setShowFav] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const { user, profile, loading } = useAuthContext();
+
+  // Fetch unread count and subscribe to realtime
+  useEffect(() => {
+    if (!user) { setUnreadCount(0); return; }
+
+    fetchUnreadCount();
+
+    const subscription = supabase
+      .channel(`user-notifications-${user.id}`)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "notifications",
+        filter: `user_id=eq.${user.id}`,
+      }, () => {
+        fetchUnreadCount();
+      })
+      .subscribe();
+
+    return () => subscription.unsubscribe();
+  }, [user]);
+
+  const fetchUnreadCount = async () => {
+    if (!user) return;
+    const { count } = await supabase
+      .from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("is_read", false);
+    setUnreadCount(count || 0);
+  };
 
   useEffect(() => {
     const handleClickOutsideMenu = (e) => {
@@ -48,7 +79,8 @@ const Header = () => {
 
   const goToHome = () => navigate("/");
   const goToNotifications = () => navigate("/notifications");
-  const goToCategory = (category) => navigate(`/category/${encodeURIComponent(category)}`);
+  const goToCategory = (category) =>
+    navigate(`/category/${encodeURIComponent(category)}`);
 
   const getAvatarLetter = () => {
     if (profile?.name) return profile.name.charAt(0).toUpperCase();
@@ -57,37 +89,6 @@ const Header = () => {
   };
 
   const avatarLetter = getAvatarLetter();
-
-  // Dashboard button logic
-  const getDashboardButton = () => {
-    if (!user || !profile) return null;
-
-    if (profile.role === "admin") {
-      return (
-        <button
-          className="dashboard-btn"
-          onClick={() => navigate("/admin")}
-          title="Go to Admin Dashboard"
-        >
-          Admin Dashboard
-        </button>
-      );
-    }
-
-    if (profile.role === "seller") {
-      return (
-        <button
-          className="dashboard-btn"
-          onClick={() => navigate("/seller")}
-          title="Go to Seller Dashboard"
-        >
-          Seller Dashboard
-        </button>
-      );
-    }
-
-    return null;
-  };
 
   return (
     <>
@@ -131,20 +132,20 @@ const Header = () => {
               {showFav && (
                 <div className="fav-dropdown">
                   {favorites.length > 0 ? (
-                    favorites.map(item => (
+                    favorites.map((item) => (
                       <div
                         key={item.id}
                         className="fav-item"
                         onClick={() =>
                           navigate(`/product/${item.id}`, {
-                            state: { product: item, products }
+                            state: { product: item, products: [] },
                           })
                         }
                       >
                         <img src={item.image} alt={item.title} />
                         <div className="fav-info">
                           <p>{item.title}</p>
-                          <span>PKR {item.currentBid.toLocaleString()}</span>
+                          <span>PKR {item.currentBid?.toLocaleString()}</span>
                         </div>
                         <FaHeart
                           className="remove-heart"
@@ -162,8 +163,19 @@ const Header = () => {
               )}
             </div>
 
-            {/* Notifications */}
-            <FaBell className="header-icon" onClick={goToNotifications} />
+            {/* Notification Bell with badge */}
+            <div
+              className="bell-wrapper"
+              onClick={goToNotifications}
+              style={{ position: "relative", cursor: "pointer" }}
+            >
+              <FaBell className="header-icon" />
+              {user && unreadCount > 0 && (
+                <span className="notif-badge">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </div>
 
             {/* Avatar */}
             {user && avatarLetter && (
@@ -179,26 +191,19 @@ const Header = () => {
 
           </div>
 
-          {/* Login/Signup — only when not logged in */}
+          {/* Login/Signup */}
           {!loading && !user && (
             <>
-              <button
-                className="header-btn"
-                onClick={() => setShowLogin(true)}
-              >
+              <button className="header-btn" onClick={() => setShowLogin(true)}>
                 Login
               </button>
-              <button
-                className="signup-btn"
-                onClick={() => setShowSignup(true)}
-              >
+              <button className="signup-btn" onClick={() => setShowSignup(true)}>
                 Sign Up
               </button>
             </>
           )}
 
         </div>
-
       </header>
 
       {/* OVERLAY */}
@@ -215,7 +220,8 @@ const Header = () => {
           <h3>Menu</h3>
         </div>
         <span onClick={() => { goToHome(); setShowMenu(false); }}>Home</span>
-        <span className="dropdown-title">Category
+        <span className="dropdown-title">
+          Category
           <div className="dropdown-category">
             <span onClick={() => goToCategory("Jewelry")}>Jewelry</span>
             <span onClick={() => goToCategory("Antiques")}>Antiques</span>
@@ -255,19 +261,22 @@ const Header = () => {
         </div>
         <span onClick={() => { navigate("/auctions"); setShowMenu(false); }}>Auctions</span>
         <span onClick={() => { navigate("/how-to-bid"); setShowMenu(false); }}>How to Bid</span>
-
-        {/* Dashboard link in sidebar too */}
         {!loading && profile?.role === "admin" && (
-          <span onClick={() => { navigate("/admin"); setShowMenu(false); }}>
+          <span
+            onClick={() => { navigate("/admin"); setShowMenu(false); }}
+            style={{ color: "#D4AF37", fontWeight: "600" }}
+          >
             Admin Dashboard
           </span>
         )}
         {!loading && profile?.role === "seller" && (
-          <span onClick={() => { navigate("/seller"); setShowMenu(false); }}>
+          <span
+            onClick={() => { navigate("/seller"); setShowMenu(false); }}
+            style={{ color: "#D4AF37", fontWeight: "600" }}
+          >
             Seller Dashboard
           </span>
         )}
-
       </nav>
 
       {/* MODALS */}
@@ -278,14 +287,12 @@ const Header = () => {
           openForgotPassword={() => { setShowLogin(false); setShowForgotPassword(true); }}
         />
       )}
-
       {showSignup && (
         <SignupModal
           closeModal={() => setShowSignup(false)}
           openLogin={() => { setShowSignup(false); setShowLogin(true); }}
         />
       )}
-
       {showForgotPassword && (
         <ForgotPasswordModal
           closeModal={() => setShowForgotPassword(false)}

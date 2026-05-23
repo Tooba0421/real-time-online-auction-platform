@@ -14,34 +14,33 @@ const Header = ({ title }) => {
     if (!user) return;
     fetchUnreadCount();
 
-    // Real time notification count update
     const subscription = supabase
-      .channel('admin-notifications')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'notifications',
-        filter: `user_id=eq.${user.id}`
+      .channel(`admin-notifications-${user.id}`)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "notifications",
+        filter: `user_id=eq.${user.id}`,
       }, () => {
-        fetchUnreadCount()
+        fetchUnreadCount();
       })
-      .subscribe()
+      .subscribe();
 
-    return () => subscription.unsubscribe()
+    return () => subscription.unsubscribe();
   }, [user]);
 
   const fetchUnreadCount = async () => {
+    if (!user) return;
     const { count } = await supabase
-      .from('notifications')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-      .eq('is_read', false)
-
-    setUnreadCount(count || 0)
-  }
+      .from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("is_read", false);
+    setUnreadCount(count || 0);
+  };
 
   const getInitial = () => {
-    const name = profile?.name || user?.email || "S";
+    const name = profile?.name || user?.email || "A";
     return name.charAt(0).toUpperCase();
   };
 
@@ -53,18 +52,24 @@ const Header = ({ title }) => {
 
       <div className="header-right">
 
-        {/* Real notification count */}
-        <div className="header-notification">
+        {/* Notification Bell — navigates to shared /notifications page */}
+        <div
+          className="header-notification"
+          onClick={() => navigate("/notifications")}
+          style={{ cursor: "pointer" }}
+        >
           <FaBell className="bell" />
           {unreadCount > 0 && (
-            <span className="notification-badge">{unreadCount}</span>
+            <span className="notification-badge">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
           )}
         </div>
 
-        {/* Profile — navigates to UserFrontend ProfilePage */}
+        {/* Profile */}
         <div
           className="header-profile"
-          onClick={() => navigate('/profile')}
+          onClick={() => navigate("/profile")}
           style={{ cursor: "pointer" }}
         >
           <div className="profile-initial-avatar-small">

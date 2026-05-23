@@ -179,10 +179,10 @@ HEADER
 
 /* Notification */
 .header-notification {
-    position: relative;
-    font-size: 1.25rem;
+    /* position: relative; */
+    font-size: 1.3rem;
     cursor: pointer;
-    color: var(--color-text-secondary);
+    color: var(--color-dark);
 }
 
 .notification-badge {

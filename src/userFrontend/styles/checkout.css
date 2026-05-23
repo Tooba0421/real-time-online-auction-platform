@@ -189,6 +189,32 @@
   margin-top:5px;
 }
 
+.stripe-form {
+  margin-top: 20px;
+}
+
+.stripe-form h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  color: #1a1a1a;
+}
+
+.card-element-wrapper {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 14px;
+  background: #fafafa;
+  margin-bottom: 4px;
+}
+
+.card-element-wrapper:focus-within {
+  border-color: #D4AF37;
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.15);
+}
+
 /* =========================
    RESPONSIVE DESIGN SYSTEM
    ========================= */
