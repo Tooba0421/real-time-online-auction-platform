@@ -264,7 +264,6 @@ const Header = () => {
         {!loading && profile?.role === "admin" && (
           <span
             onClick={() => { navigate("/admin"); setShowMenu(false); }}
-            style={{ color: "#D4AF37", fontWeight: "600" }}
           >
             Admin Dashboard
           </span>
@@ -272,7 +271,6 @@ const Header = () => {
         {!loading && profile?.role === "seller" && (
           <span
             onClick={() => { navigate("/seller"); setShowMenu(false); }}
-            style={{ color: "#D4AF37", fontWeight: "600" }}
           >
             Seller Dashboard
           </span>

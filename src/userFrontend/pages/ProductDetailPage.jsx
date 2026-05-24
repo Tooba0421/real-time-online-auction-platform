@@ -2,7 +2,7 @@ import { useState, useRef, useLayoutEffect, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   FaArrowLeft, FaArrowRight, FaClock,
-  FaTag, FaGavel, FaBoxOpen, FaTrophy, FaTimesCircle
+  FaTag, FaGavel, FaBoxOpen, FaTrophy, FaShoppingCart
 } from "react-icons/fa";
 import toast from "react-hot-toast";
 import { useAuthContext } from "../../context/AuthContext";
@@ -26,9 +26,7 @@ const toSlug = (title) =>
 // ── Countdown display ──────────────────────────────────────
 const CountdownTimer = ({ timeLeft }) => {
   if (!timeLeft) return null;
-
   const isUrgent = timeLeft.total < 300;
-
   return (
     <div className={`countdown-grid ${isUrgent ? "urgent" : ""}`}>
       {timeLeft.days > 0 && (
@@ -53,8 +51,9 @@ const CountdownTimer = ({ timeLeft }) => {
   );
 };
 
-// ── useAuctionBySlug ─────────────────────────────────────────
-// Fetches live OR ended auctions (so ended auctions don't show "not found")
+// ── useAuctionBySlug ───────────────────────────────────────
+// FIX: Now fetches live, ended, AND paused auctions
+// Previously only fetched live — ended auctions showed "not found"
 const useAuctionBySlug = (productSlug) => {
   const [auctionId, setAuctionId] = useState(null);
   const [slugLoading, setSlugLoading] = useState(true);
@@ -66,7 +65,6 @@ const useAuctionBySlug = (productSlug) => {
       try {
         setSlugLoading(true);
 
-        // Fetch live AND ended auctions so winner can still view the page
         const { data, error } = await supabase
           .from("auctions")
           .select(`
@@ -75,7 +73,7 @@ const useAuctionBySlug = (productSlug) => {
             products ( title )
           `)
           .eq("approval_status", "approved")
-          .in("status", ["live", "paused", "ended"]);
+          .in("status", ["live", "ended", "paused"]);
 
         if (error || !data) return;
 
@@ -160,7 +158,7 @@ const ProductDetailPage = () => {
   const [bidAmount, setBidAmount] = useState("");
   const [bidding, setBidding] = useState(false);
 
-  // Winner check state
+  // FIX: Track whether current logged-in buyer is the auction winner
   const [isWinner, setIsWinner] = useState(false);
 
   const [showLogin, setShowLogin] = useState(false);
@@ -170,6 +168,31 @@ const ProductDetailPage = () => {
   useLayoutEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }, [productSlug, id]);
+
+  // ── Check if current user is the winner ───────────────
+  // FIX: Compare buyers.id (winner_id) with current user's buyer record
+  useEffect(() => {
+    if (!auction || !user || auction.status !== "ended") {
+      setIsWinner(false);
+      return;
+    }
+
+    const checkWinner = async () => {
+      const { data } = await supabase
+        .from("buyers")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (data && data.id === auction.winner_id) {
+        setIsWinner(true);
+      } else {
+        setIsWinner(false);
+      }
+    };
+
+    checkWinner();
+  }, [auction, user]);
 
   const product = auction?.products;
   const seller = auction?.sellers;
@@ -192,45 +215,14 @@ const ProductDetailPage = () => {
   const minNextBid =
     (auction?.highest_bid || 0) + (auction?.min_increment || 0);
 
-  // ── Check if current user is the auction winner ────────────
-  useEffect(() => {
-    if (!auction || !user || auction.status !== "ended" || !auction.winner_id) {
-      setIsWinner(false);
-      return;
-    }
-
-    const checkWinner = async () => {
-      try {
-        const { data } = await supabase
-          .from("buyers")
-          .select("id")
-          .eq("user_id", user.id)
-          .maybeSingle();
-
-        if (data && data.id === auction.winner_id) {
-          setIsWinner(true);
-        } else {
-          setIsWinner(false);
-        }
-      } catch (err) {
-        console.error("Winner check error:", err);
-        setIsWinner(false);
-      }
-    };
-
-    checkWinner();
-  }, [auction, user]);
-
-  // ── Handle bid ─────────────────────────────────────────────
+  // ── Handle bid ─────────────────────────────────────────
   const handleBid = async () => {
-    // Step 1: Check login
     if (!user) {
       toast.error("Please login to place a bid");
       setShowLogin(true);
       return;
     }
 
-    // Step 2: Check role
     if (profile?.role !== "buyer") {
       const buyerRecord = await fetchBuyerRecord(user.id);
 
@@ -239,12 +231,10 @@ const ProductDetailPage = () => {
         setShowCnic(true);
         return;
       }
-
       if (buyerRecord.is_verified === "pending") {
         toast.error("Your CNIC is under review. You can bid once approved.");
         return;
       }
-
       if (buyerRecord.is_verified === "rejected") {
         toast.error("Your CNIC was rejected. Please resubmit.");
         setShowCnic(true);
@@ -256,7 +246,6 @@ const ProductDetailPage = () => {
       return;
     }
 
-    // Step 3: Validate bid
     const validation = validateBid({
       bidAmount,
       highestBid: auction?.highest_bid || 0,
@@ -271,7 +260,6 @@ const ProductDetailPage = () => {
       return;
     }
 
-    // Step 4: Place bid
     try {
       setBidding(true);
 
@@ -300,16 +288,15 @@ const ProductDetailPage = () => {
     }
   };
 
-  // ── Navigate to checkout ───────────────────────────────────
+  // ── Navigate to checkout with all required data ────────
   const handleGoToCheckout = () => {
     navigate("/checkout", {
       state: {
         auctionId: auction.id,
         title: product.title,
-        sellerName:
-          seller?.profiles?.name || seller?.business_name || "—",
+        sellerName: seller?.profiles?.name || seller?.business_name || "—",
         sellerId: auction.seller_id,
-        sellerUserId: seller?.profiles?.id || seller?.user_id,
+        sellerUserId: seller?.profiles?.id || null,
         endDate: auction.end_time,
         totalBids: bids.length,
         winningBid: auction.highest_bid,
@@ -318,7 +305,7 @@ const ProductDetailPage = () => {
     });
   };
 
-  // ── Old fake data route ────────────────────────────────────
+  // ── Old fake data route ────────────────────────────────
   if (!isRealAuction) {
     return (
       <>
@@ -335,7 +322,7 @@ const ProductDetailPage = () => {
     );
   }
 
-  // ── Loading ────────────────────────────────────────────────
+  // ── Loading ────────────────────────────────────────────
   if (slugLoading || loading) {
     return (
       <>
@@ -349,7 +336,7 @@ const ProductDetailPage = () => {
     );
   }
 
-  // ── Not found ──────────────────────────────────────────────
+  // ── Not found ──────────────────────────────────────────
   if (!auction || !product) {
     return (
       <>
@@ -365,20 +352,6 @@ const ProductDetailPage = () => {
       </>
     );
   }
-
-  // ── Determine status badge ─────────────────────────────────
-  const getStatusBadge = () => {
-    switch (auction?.status) {
-      case "live":
-        return <span className="live-badge">● Live</span>;
-      case "paused":
-        return <span className="paused-badge">⏸ Paused</span>;
-      case "ended":
-        return <span className="ended-badge">✓ Ended</span>;
-      default:
-        return null;
-    }
-  };
 
   return (
     <>
@@ -438,9 +411,18 @@ const ProductDetailPage = () => {
           {/* ── RIGHT: Product Info ── */}
           <div className="product-info">
 
-            {/* Status + Category Badges */}
+            {/* Status + category badges */}
             <div className="auction-status-row">
-              {getStatusBadge()}
+              {/* FIX: Show correct status badge based on auction.status */}
+              {auction.status === "live" && (
+                <span className="live-badge">● Live</span>
+              )}
+              {auction.status === "ended" && (
+                <span className="ended-badge">● Ended</span>
+              )}
+              {auction.status === "paused" && (
+                <span className="paused-badge">⏸ Paused</span>
+              )}
               <span className="category-badge">
                 <FaTag /> {product.category}
               </span>
@@ -473,6 +455,7 @@ const ProductDetailPage = () => {
             <div className="bid-box">
               <div className="bid-box-left">
                 <p className="label">
+                  {/* FIX: Label changes based on auction status */}
                   {auction.status === "ended" ? "Final Bid" : "Current Highest Bid"}
                 </p>
                 <h2 className="current-bid">
@@ -484,31 +467,32 @@ const ProductDetailPage = () => {
                 </p>
               </div>
 
-              <div className="bid-box-right">
-                {auction.status === "live" ? (
-                  <>
-                    <p className="label">
-                      <FaClock /> Time Remaining
-                    </p>
-                    <CountdownTimer timeLeft={timeLeft} />
-                  </>
-                ) : (
-                  <p className="label" style={{ color: "#6b7280" }}>
-                    {auction.status === "ended" ? "Auction Ended" : "Auction Paused"}
+              {/* FIX: Only show countdown when auction is live */}
+              {auction.status === "live" && (
+                <div className="bid-box-right">
+                  <p className="label">
+                    <FaClock /> Time Remaining
                   </p>
-                )}
-              </div>
+                  <CountdownTimer timeLeft={timeLeft} />
+                </div>
+              )}
             </div>
 
-            {/* ── AUCTION LIVE: Show bid input ── */}
-            {auction?.status === "live" && (
+            {/* ══════════════════════════════════════════════
+                FIX: Separate sections for each auction state
+                Previously all were showing at once
+            ══════════════════════════════════════════════ */}
+
+            {/* ── LIVE: Bid input ── */}
+            {auction.status === "live" && (
               <>
                 <p className="min-bid-note">
                   Minimum next bid:{" "}
                   <strong>PKR {minNextBid.toLocaleString()}</strong>
                   {auction.min_increment > 0 && (
                     <span className="increment-note">
-                      {" "}(increment: PKR {auction.min_increment.toLocaleString()})
+                      {" "}
+                      (increment: PKR {auction.min_increment.toLocaleString()})
                     </span>
                   )}
                 </p>
@@ -536,59 +520,75 @@ const ProductDetailPage = () => {
               </>
             )}
 
-            {/* ── AUCTION PAUSED ── */}
-            {auction?.status === "paused" && (
+            {/* ── PAUSED: Message only ── */}
+            {auction.status === "paused" && (
               <div className="auction-paused-box">
-                <p>⏸ This auction is temporarily paused. Check back soon.</p>
+                <p>⏸ This auction is temporarily paused. Bidding will resume soon.</p>
               </div>
             )}
 
-            {/* ── AUCTION ENDED with bids (has winner) ── */}
-            {auction?.status === "ended" && auction.winner_id && bids.length > 0 && (
+            {/* ── ENDED: Show result + Pay Now for winner ── */}
+            {auction.status === "ended" && (
               <div className="auction-ended-box">
-                <div className="ended-icon">
-                  <FaTrophy style={{ color: "#D4AF37", fontSize: "24px" }} />
-                </div>
-                <h3>Auction Ended</h3>
-                <p>
-                  Final Price:{" "}
-                  <strong>PKR {auction.highest_bid?.toLocaleString()}</strong>
-                </p>
 
-                {/* Show Pay Now button only to winner */}
-                {isWinner && (
-                  <div className="winner-checkout-box">
-                    <p style={{ color: "#10b981", fontWeight: "600", marginBottom: "12px" }}>
-                      🎉 Congratulations! You won this auction!
+                {auction.winner_id && bids.length > 0 ? (
+                  <>
+                    {/* Ended with a winner */}
+                    <div className="ended-header">
+                      <FaTrophy
+                        style={{ color: "#D4AF37", fontSize: "22px", marginRight: "10px" }}
+                      />
+                      <div>
+                        <h3 style={{ margin: 0 }}>Auction Ended</h3>
+                        <p style={{ margin: "4px 0 0", color: "#555" }}>
+                          Final Price:{" "}
+                          <strong>PKR {auction.highest_bid?.toLocaleString()}</strong>
+                        </p>
+                        <p style={{ margin: "2px 0 0", color: "#888", fontSize: "13px" }}>
+                          Total Bids: {bids.length}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Pay Now — only for the winner */}
+                    {isWinner && (
+                      <div className="winner-checkout-box">
+                        <p className="winner-msg">
+                          🎉 Congratulations! You won this auction.
+                        </p>
+                        <button
+                          className="place-bid-btn"
+                          onClick={handleGoToCheckout}
+                          style={{ marginTop: "10px" }}
+                        >
+                          <FaShoppingCart style={{ marginRight: "8px" }} />
+                          Pay Now
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Message for non-winner logged-in buyer */}
+                    {user && !isWinner && profile?.role === "buyer" && (
+                      <p
+                        style={{
+                          color: "#888",
+                          fontSize: "13px",
+                          marginTop: "12px",
+                        }}
+                      >
+                        This auction has ended. Better luck next time!
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  /* Ended with no bids */
+                  <div>
+                    <h3>Auction Ended</h3>
+                    <p style={{ color: "#888" }}>
+                      This auction ended with no bids placed.
                     </p>
-                    <button
-                      className="place-bid-btn"
-                      onClick={handleGoToCheckout}
-                    >
-                      Pay Now — PKR {auction.highest_bid?.toLocaleString()}
-                    </button>
                   </div>
                 )}
-
-                {/* Show message to non-winner logged-in users */}
-                {user && !isWinner && profile?.role === "buyer" && (
-                  <p style={{ color: "#6b7280", fontSize: "14px", marginTop: "8px" }}>
-                    This auction has been won by another bidder.
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* ── AUCTION ENDED with no bids ── */}
-            {auction?.status === "ended" && !auction.winner_id && (
-              <div className="auction-ended-box">
-                <div className="ended-icon">
-                  <FaTimesCircle style={{ color: "#6b7280", fontSize: "24px" }} />
-                </div>
-                <h3>Auction Ended</h3>
-                <p style={{ color: "#6b7280" }}>
-                  This auction ended with no bids placed.
-                </p>
               </div>
             )}
 
@@ -698,9 +698,7 @@ const ProductDetailPage = () => {
                     >
                       PKR {bid.bid_amount.toLocaleString()}
                       {isHighest && (
-                        <span className="highest-tag">
-                          {auction.status === "ended" ? "Winner" : "Highest"}
-                        </span>
+                        <span className="highest-tag">Highest</span>
                       )}
                     </div>
                   </div>
