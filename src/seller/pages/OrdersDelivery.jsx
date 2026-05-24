@@ -1,13 +1,8 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Doughnut } from "react-chartjs-2";
-import {
-  Chart as ChartJS,
-  ArcElement,
-  Tooltip,
-  Legend,
-} from "chart.js";
+import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import { supabase } from "../../supabase/supabase";
-import { useAuthContext } from "../../context/AuthContext";
+import { useSellerContext } from "../../context/SellerContext";
 import toast from "react-hot-toast";
 import StatCard from "../../common/components/StatCard";
 import StatusBadge from "../../common/components/StatusBadge";
@@ -18,11 +13,10 @@ import "../styles/orderDelivery.css";
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 const OrdersDelivery = () => {
+  // ✅ Read from shared context — no local fetch, realtime handled by SellerContext
+  const { orders, ordersLoading, updateOrderDeliveryLocally, refetchOrders } =
+    useSellerContext();
 
-  const { user } = useAuthContext();
-
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(null);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -32,76 +26,7 @@ const OrdersDelivery = () => {
   const [trackingNo, setTrackingNo] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (!user) return;
-    fetchOrders();
-  }, [user]);
-
-  const fetchOrders = async () => {
-    try {
-      setLoading(true);
-
-      const { data: sellerData } = await supabase
-        .from('sellers')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (!sellerData) return;
-
-      const { data, error } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          auctions (
-            id,
-            products ( title, category )
-          ),
-          buyers (
-            id,
-            phone_no,
-            address,
-            city,
-            postal_code,
-            profiles ( name )
-          ),
-          payments (
-            status,
-            total_amount
-          ),
-          deliveries (
-            id,
-            status,
-            tracking_no,
-            courier_service,
-            delivery_date
-          )
-        `)
-        .eq('seller_id', sellerData.id)
-        .order('order_date', { ascending: false });
-
-      if (error) {
-        toast.error("Error fetching orders");
-        console.error(error);
-        return;
-      }
-
-      setOrders(data || []);
-
-    } catch (err) {
-      console.error(err);
-      toast.error("Something went wrong");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Mark as shipped — opens tracking modal
-  const openTrackingModal = (order) => {
-    setTrackingModal(order);
-    setTrackingNo("");
-  };
-
+  // ── Submit tracking number (shipped) ────────────────────────────
   const handleSubmitTracking = async () => {
     if (!trackingNo.trim()) {
       toast.error("Please enter a tracking number");
@@ -110,70 +35,66 @@ const OrdersDelivery = () => {
 
     try {
       setSubmitting(true);
-
       const delivery = trackingModal.deliveries;
 
       if (delivery?.id) {
-        // Update existing delivery
+        // Update existing delivery record
         const { error } = await supabase
-          .from('deliveries')
-          .update({
-            status: 'shipped',
-            tracking_no: trackingNo.trim(),
-            courier_service: 'TCS'
-          })
-          .eq('id', delivery.id);
+          .from("deliveries")
+          .update({ status: "shipped", tracking_no: trackingNo.trim(), courier_service: "TCS" })
+          .eq("id", delivery.id);
+        if (error) { toast.error("Error updating delivery"); return; }
 
-        if (error) {
-          toast.error("Error updating delivery");
-          console.error(error);
-          return;
-        }
+        // ✅ Optimistic update — UI changes instantly without waiting for realtime
+        updateOrderDeliveryLocally(trackingModal.id, {
+          status: "shipped",
+          tracking_no: trackingNo.trim(),
+          courier_service: "TCS",
+        });
       } else {
         // Create new delivery record
-        const { error } = await supabase
-          .from('deliveries')
+        const { data: newDelivery, error } = await supabase
+          .from("deliveries")
           .insert({
             order_id: trackingModal.id,
             buyer_id: trackingModal.buyer_id,
             seller_id: trackingModal.seller_id,
-            status: 'shipped',
+            status: "shipped",
             tracking_no: trackingNo.trim(),
-            courier_service: 'TCS'
-          });
+            courier_service: "TCS",
+          })
+          .select()
+          .single();
+        if (error) { toast.error("Error creating delivery"); return; }
 
-        if (error) {
-          toast.error("Error creating delivery");
-          console.error(error);
-          return;
-        }
+        // ✅ Optimistic update with newly created delivery id
+        updateOrderDeliveryLocally(trackingModal.id, {
+          id: newDelivery.id,
+          status: "shipped",
+          tracking_no: trackingNo.trim(),
+          courier_service: "TCS",
+        });
       }
 
       // Notify buyer
-      if (trackingModal.buyers?.profiles) {
-        const { data: buyerProfile } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('id', trackingModal.buyer_id)
-          .single();
+      const buyerUserId = trackingModal.buyers?.profiles
+        ? await getBuyerUserId(trackingModal.buyer_id)
+        : null;
 
-        if (buyerProfile) {
-          await supabase
-            .from('notifications')
-            .insert({
-              user_id: buyerProfile.id,
-              title: 'Your Order Has Been Shipped! 📦',
-              message: `Your order for "${trackingModal.auctions?.products?.title}" has been shipped via TCS. Tracking No: ${trackingNo}`,
-              type: 'delivery',
-              notification_for: 'buyer',
-              is_read: false
-            });
-        }
+      if (buyerUserId) {
+        await supabase.from("notifications").insert({
+          user_id: buyerUserId,
+          title: "Your Order Has Been Shipped! 📦",
+          message: `Your order for "${trackingModal.auctions?.products?.title}" has been shipped via TCS. Tracking No: ${trackingNo}`,
+          type: "delivery",
+          notification_for: "buyer",
+          is_read: false,
+        });
       }
 
       toast.success("Order marked as shipped!");
       setTrackingModal(null);
-      fetchOrders();
+      setTrackingNo("");
 
     } catch (err) {
       console.error(err);
@@ -183,77 +104,90 @@ const OrdersDelivery = () => {
     }
   };
 
-  // Mark as in transit
+  // Helper to get profile user_id from buyer_id
+  const getBuyerUserId = async (buyerId) => {
+    const { data } = await supabase
+      .from("buyers")
+      .select("user_id")
+      .eq("id", buyerId)
+      .single();
+    return data?.user_id || null;
+  };
+
+  // ── Mark in transit ──────────────────────────────────────────────
   const handleMarkInTransit = async (order) => {
     try {
       setProcessing(order.id);
 
       const { error } = await supabase
-        .from('deliveries')
-        .update({ status: 'in_transit' })
-        .eq('id', order.deliveries?.id);
+        .from("deliveries")
+        .update({ status: "in_transit" })
+        .eq("id", order.deliveries?.id);
 
-      if (error) {
-        toast.error("Error updating delivery status");
-        console.error(error);
-        return;
-      }
+      if (error) { toast.error("Error updating delivery status"); return; }
+
+      // ✅ Optimistic update
+      updateOrderDeliveryLocally(order.id, { status: "in_transit" });
 
       // Notify buyer
-      await supabase
-        .from('notifications')
-        .insert({
-          user_id: order.buyer_id,
-          title: 'Your Order is In Transit 🚚',
+      const buyerUserId = await getBuyerUserId(order.buyer_id);
+      if (buyerUserId) {
+        await supabase.from("notifications").insert({
+          user_id: buyerUserId,
+          title: "Your Order is In Transit 🚚",
           message: `Your order for "${order.auctions?.products?.title}" is now in transit. Expected delivery soon.`,
-          type: 'delivery',
-          notification_for: 'buyer',
-          is_read: false
+          type: "delivery",
+          notification_for: "buyer",
+          is_read: false,
         });
+      }
 
       toast.success("Status updated to In Transit");
-      fetchOrders();
 
     } catch (err) {
       console.error(err);
       toast.error("Something went wrong");
+      // Rollback — refetch for accuracy
+      refetchOrders();
     } finally {
       setProcessing(null);
     }
   };
 
-  const query = search.trim().toLowerCase();
-  const filteredOrders = orders.filter(o => {
-    const productTitle = o.auctions?.products?.title?.toLowerCase() || '';
-    const buyerName = o.buyers?.profiles?.name?.toLowerCase() || '';
+  // ── Filtered list ────────────────────────────────────────────────
+  const filteredOrders = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return orders.filter((o) => {
+      const productTitle = o.auctions?.products?.title?.toLowerCase() || "";
+      const buyerName    = o.buyers?.profiles?.name?.toLowerCase() || "";
 
-    const matchesSearch =
-      productTitle.includes(query) ||
-      buyerName.includes(query) ||
-      o.id.toLowerCase().includes(query);
+      const matchesSearch =
+        productTitle.includes(query) ||
+        buyerName.includes(query) ||
+        o.id.toLowerCase().includes(query);
 
-    const deliveryStatus = o.deliveries?.status || 'pending';
-    const matchesStatus =
-      filterStatus === "all" || deliveryStatus === filterStatus;
+      const deliveryStatus = o.deliveries?.status || "pending";
+      const matchesStatus =
+        filterStatus === "all" || deliveryStatus === filterStatus;
 
-    return matchesSearch && matchesStatus;
-  });
+      return matchesSearch && matchesStatus;
+    });
+  }, [orders, search, filterStatus]);
 
-  // Stats
-  const stats = useMemo(() => {
-    const total = orders.length;
-    const pending = orders.filter(o => !o.deliveries || o.deliveries?.status === 'pending').length;
-    const shipped = orders.filter(o => o.deliveries?.status === 'shipped').length;
-    const inTransit = orders.filter(o => o.deliveries?.status === 'in_transit').length;
-    const delivered = orders.filter(o => o.deliveries?.status === 'delivered').length;
-    return { total, pending, shipped, inTransit, delivered };
-  }, [orders]);
+  // ── Stats ────────────────────────────────────────────────────────
+  const stats = useMemo(() => ({
+    total:     orders.length,
+    pending:   orders.filter((o) => !o.deliveries || o.deliveries?.status === "pending").length,
+    shipped:   orders.filter((o) => o.deliveries?.status === "shipped").length,
+    inTransit: orders.filter((o) => o.deliveries?.status === "in_transit").length,
+    delivered: orders.filter((o) => o.deliveries?.status === "delivered").length,
+  }), [orders]);
 
   const statsData = [
-    { title: "Total Orders", value: loading ? "..." : stats.total, subtitle: "All auction sales" },
-    { title: "Pending Shipment", value: loading ? "..." : stats.pending, subtitle: "Need to book courier" },
-    { title: "In Transit", value: loading ? "..." : stats.inTransit, subtitle: "On the way to buyer" },
-    { title: "Delivered", value: loading ? "..." : stats.delivered, subtitle: "Completed orders" },
+    { title: "Total Orders",      value: ordersLoading ? "..." : stats.total,     subtitle: "All auction sales" },
+    { title: "Pending Shipment",  value: ordersLoading ? "..." : stats.pending,   subtitle: "Need to book courier" },
+    { title: "In Transit",        value: ordersLoading ? "..." : stats.inTransit, subtitle: "On the way to buyer" },
+    { title: "Delivered",         value: ordersLoading ? "..." : stats.delivered, subtitle: "Completed orders" },
   ];
 
   const deliveryChartData = useMemo(() => ({
@@ -278,24 +212,30 @@ const OrdersDelivery = () => {
   };
 
   const formatDate = (dateStr) => {
-    if (!dateStr) return '—';
-    return new Date(dateStr).toLocaleDateString('en-PK', {
-      year: 'numeric', month: 'short', day: 'numeric'
+    if (!dateStr) return "—";
+    return new Date(dateStr).toLocaleDateString("en-PK", {
+      year: "numeric", month: "short", day: "numeric",
     });
   };
 
-  const getDeliveryStatus = (order) =>
-    order.deliveries?.status || 'pending';
+  const getDeliveryStatus = (order) => order.deliveries?.status || "pending";
 
   return (
     <div className="seller-page">
 
+      {/* STAT CARDS */}
       <div className="stats-grid">
         {statsData.map((item, index) => (
-          <StatCard key={index} title={item.title} value={item.value} subtitle={item.subtitle} />
+          <StatCard
+            key={index}
+            title={item.title}
+            value={item.value}
+            subtitle={item.subtitle}
+          />
         ))}
       </div>
 
+      {/* TABLE */}
       <div className="seller-section">
         <h3 className="seller-section-heading">Orders & Delivery</h3>
 
@@ -306,7 +246,10 @@ const OrdersDelivery = () => {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+          >
             <option value="all">All Status</option>
             <option value="pending">Pending</option>
             <option value="shipped">Shipped</option>
@@ -315,7 +258,7 @@ const OrdersDelivery = () => {
           </select>
         </div>
 
-        {loading ? (
+        {ordersLoading ? (
           <div className="loading-state">Loading orders...</div>
         ) : (
           <div className="table-wrapper">
@@ -342,52 +285,57 @@ const OrdersDelivery = () => {
                     <td colSpan="12" className="no-data">No orders found</td>
                   </tr>
                 ) : (
-                  filteredOrders.map(o => {
+                  filteredOrders.map((o) => {
                     const deliveryStatus = getDeliveryStatus(o);
                     return (
                       <tr key={o.id}>
-                        <td>{o.auctions?.products?.title || '—'}</td>
-                        <td>{o.buyers?.profiles?.name || '—'}</td>
-                        <td>{o.buyers?.phone_no || '—'}</td>
+                        <td>{o.auctions?.products?.title || "—"}</td>
+                        <td>{o.buyers?.profiles?.name || "—"}</td>
+                        <td>{o.buyers?.phone_no || "—"}</td>
                         <td>
-                          <span title={o.buyers?.address || ''}>
+                          <span title={o.buyers?.address || ""}>
                             {o.buyers?.address
                               ? o.buyers.address.length > 20
-                                ? o.buyers.address.slice(0, 20) + '...'
+                                ? o.buyers.address.slice(0, 20) + "..."
                                 : o.buyers.address
-                              : '—'}
+                              : "—"}
                           </span>
                         </td>
-                        <td>{o.buyers?.city || '—'}</td>
+                        <td>{o.buyers?.city || "—"}</td>
                         <td>PKR {o.total_amount?.toLocaleString()}</td>
                         <td>
                           <StatusBadge
-                            label={o.payments?.status || 'pending'}
-                            type={o.payments?.status || 'pending'}
+                            label={o.payments?.status || "pending"}
+                            type={o.payments?.status || "pending"}
                           />
                         </td>
-                        <td>{o.deliveries?.courier_service || '—'}</td>
-                        <td>{o.deliveries?.tracking_no || '—'}</td>
+                        <td>{o.deliveries?.courier_service || "—"}</td>
+                        <td>{o.deliveries?.tracking_no || "—"}</td>
                         <td>
                           <StatusBadge
                             label={
-                              deliveryStatus === 'in_transit' ? 'In Transit' :
-                              deliveryStatus.charAt(0).toUpperCase() + deliveryStatus.slice(1)
+                              deliveryStatus === "in_transit"
+                                ? "In Transit"
+                                : deliveryStatus.charAt(0).toUpperCase() +
+                                  deliveryStatus.slice(1)
                             }
                             type={deliveryStatus}
                           />
                         </td>
                         <td>{formatDate(o.order_date)}</td>
                         <td className="actions">
-                          {deliveryStatus === 'pending' && (
+                          {deliveryStatus === "pending" && (
                             <ActionButton
                               label="Enter Tracking No"
                               variant="secondary"
-                              onClick={() => openTrackingModal(o)}
+                              onClick={() => {
+                                setTrackingModal(o);
+                                setTrackingNo("");
+                              }}
                               disabled={processing === o.id}
                             />
                           )}
-                          {deliveryStatus === 'shipped' && (
+                          {deliveryStatus === "shipped" && (
                             <ActionButton
                               label="Mark In Transit"
                               variant="secondary"
@@ -395,12 +343,12 @@ const OrdersDelivery = () => {
                               disabled={processing === o.id}
                             />
                           )}
-                          {(deliveryStatus === 'in_transit' ||
-                            deliveryStatus === 'delivered') && (
+                          {(deliveryStatus === "in_transit" ||
+                            deliveryStatus === "delivered") && (
                             <span className="no-action-text">
-                              {deliveryStatus === 'delivered'
-                                ? '✓ Delivered'
-                                : '🚚 In Transit'}
+                              {deliveryStatus === "delivered"
+                                ? "✓ Delivered"
+                                : "🚚 In Transit"}
                             </span>
                           )}
                         </td>
@@ -427,7 +375,7 @@ const OrdersDelivery = () => {
       {/* TRACKING NUMBER MODAL */}
       {trackingModal && (
         <div className="modal-overlay" onClick={() => setTrackingModal(null)}>
-          <div className="modal-box" onClick={e => e.stopPropagation()}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
             <h3>Enter TCS Tracking Number</h3>
             <p className="modal-subtitle">
               Book your shipment with TCS and enter the tracking number below.
@@ -435,11 +383,11 @@ const OrdersDelivery = () => {
 
             <div className="shipping-info">
               <p><strong>Product:</strong> {trackingModal.auctions?.products?.title}</p>
-              <p><strong>Buyer:</strong> {trackingModal.buyers?.profiles?.name || '—'}</p>
-              <p><strong>Phone:</strong> {trackingModal.buyers?.phone_no || '—'}</p>
-              <p><strong>Address:</strong> {trackingModal.buyers?.address || '—'}</p>
-              <p><strong>City:</strong> {trackingModal.buyers?.city || '—'}</p>
-              <p><strong>Postal Code:</strong> {trackingModal.buyers?.postal_code || '—'}</p>
+              <p><strong>Buyer:</strong> {trackingModal.buyers?.profiles?.name || "—"}</p>
+              <p><strong>Phone:</strong> {trackingModal.buyers?.phone_no || "—"}</p>
+              <p><strong>Address:</strong> {trackingModal.buyers?.address || "—"}</p>
+              <p><strong>City:</strong> {trackingModal.buyers?.city || "—"}</p>
+              <p><strong>Postal Code:</strong> {trackingModal.buyers?.postal_code || "—"}</p>
             </div>
 
             <input
@@ -447,7 +395,7 @@ const OrdersDelivery = () => {
               className="form-input"
               placeholder="Enter TCS tracking number"
               value={trackingNo}
-              onChange={e => setTrackingNo(e.target.value)}
+              onChange={(e) => setTrackingNo(e.target.value)}
               style={{ marginTop: "1rem" }}
             />
 

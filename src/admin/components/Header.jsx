@@ -1,5 +1,5 @@
 import { FaBell } from "react-icons/fa";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../supabase/supabase";
 import { useAuthContext } from "../../context/AuthContext";
@@ -9,25 +9,7 @@ const Header = ({ title }) => {
   const navigate = useNavigate();
   const { user, profile } = useAuthContext();
   const [unreadCount, setUnreadCount] = useState(0);
-
-  useEffect(() => {
-    if (!user) return;
-    fetchUnreadCount();
-
-    const subscription = supabase
-      .channel(`admin-notifications-${user.id}`)
-      .on("postgres_changes", {
-        event: "*",
-        schema: "public",
-        table: "notifications",
-        filter: `user_id=eq.${user.id}`,
-      }, () => {
-        fetchUnreadCount();
-      })
-      .subscribe();
-
-    return () => subscription.unsubscribe();
-  }, [user]);
+  const channelRef = useRef(null);
 
   const fetchUnreadCount = async () => {
     if (!user) return;
@@ -38,6 +20,37 @@ const Header = ({ title }) => {
       .eq("is_read", false);
     setUnreadCount(count || 0);
   };
+
+  useEffect(() => {
+    if (!user) return;
+
+    fetchUnreadCount();
+
+    // ✅ Fix: store channel in ref so we can properly remove it on cleanup.
+    // The original code called subscription.unsubscribe() which doesn't exist
+    // on Supabase realtime channels — the correct API is supabase.removeChannel().
+    channelRef.current = supabase
+      .channel(`admin-header-notifications-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => fetchUnreadCount()
+      )
+      .subscribe();
+
+    return () => {
+      if (channelRef.current) {
+        try { supabase.removeChannel(channelRef.current); } catch (_) {}
+        channelRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const getInitial = () => {
     const name = profile?.name || user?.email || "A";
@@ -51,8 +64,7 @@ const Header = ({ title }) => {
       </div>
 
       <div className="header-right">
-
-        {/* Notification Bell — navigates to shared /notifications page */}
+        {/* Notification Bell */}
         <div
           className="header-notification"
           onClick={() => navigate("/notifications")}
@@ -76,7 +88,6 @@ const Header = ({ title }) => {
             {getInitial()}
           </div>
         </div>
-
       </div>
     </nav>
   );

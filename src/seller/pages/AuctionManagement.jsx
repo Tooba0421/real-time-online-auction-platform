@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { Doughnut } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import { supabase } from "../../supabase/supabase";
-import { useAuthContext } from "../../context/AuthContext";
+import { useSellerContext } from "../../context/SellerContext";
 import {
-  pauseAuction, resumeAuction, closeAuction, cancelAuction
+  pauseAuction, resumeAuction, closeAuction, cancelAuction,
 } from "../../utils/auctionHelper";
 import toast from "react-hot-toast";
 import StatCard from "../../common/components/StatCard";
@@ -15,120 +16,35 @@ import "../styles/auctionManagement.css";
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-const AuctionManagement = ({ openCreateAuction }) => {
-  const { user } = useAuthContext();
+const AuctionManagement = () => {
+  const navigate = useNavigate();
 
-  const [auctions, setAuctions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // ✅ Read from shared context — no local fetch needed
+  const { auctions, auctionsLoading, updateAuctionLocally, refetchAuctions } =
+    useSellerContext();
+
   const [processing, setProcessing] = useState(null);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
-
   const [selectedResult, setSelectedResult] = useState(null);
   const [showReason, setShowReason] = useState(null);
 
+  // Edit modal state
   const [editAuction, setEditAuction] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [editImages, setEditImages] = useState([]);
   const [newImages, setNewImages] = useState([]);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (!user) return;
-    fetchAuctions();
-  }, [user]);
-
-  const fetchAuctions = async () => {
-    try {
-      setLoading(true);
-
-      const { data: sellerData } = await supabase
-        .from("sellers")
-        .select("id")
-        .eq("user_id", user.id)
-        .single();
-
-      if (!sellerData) return;
-
-      const { data, error } = await supabase
-        .from("auctions")
-        .select(`
-          *,
-          products (
-            id, title, category, base_price, description,
-            product_images ( image_url, is_primary )
-          ),
-          bids ( id, bid_amount )
-        `)
-        .eq("seller_id", sellerData.id)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        toast.error("Error fetching auctions");
-        console.error(error);
-        return;
-      }
-
-      const productIds = data?.map((a) => a.products?.id).filter(Boolean) || [];
-      let reasonMap = {};
-      if (productIds.length > 0) {
-        const { data: actionData } = await supabase
-          .from("admin_actions")
-          .select("target_id, remarks")
-          .in("target_id", productIds)
-          .eq("action_type", "reject");
-        actionData?.forEach((a) => { reasonMap[a.target_id] = a.remarks; });
-      }
-
-      const endedWithWinner = data?.filter((a) => a.status === "ended" && a.winner_id) || [];
-      let winnerMap = {};
-      if (endedWithWinner.length > 0) {
-        const winnerIds = endedWithWinner.map((a) => a.winner_id);
-        const { data: winnerData } = await supabase
-          .from("buyers")
-          .select("id, profiles ( name )")
-          .in("id", winnerIds);
-        winnerData?.forEach((w) => { winnerMap[w.id] = w.profiles?.name || "—"; });
-      }
-
-      const auctionIds = data?.map((a) => a.id) || [];
-      let orderMap = {};
-      if (auctionIds.length > 0) {
-        const { data: orderData } = await supabase
-          .from("orders")
-          .select("auction_id, order_status, payments ( status )")
-          .in("auction_id", auctionIds);
-        orderData?.forEach((o) => {
-          orderMap[o.auction_id] = {
-            orderStatus: o.order_status,
-            paymentStatus: o.payments?.status,
-          };
-        });
-      }
-
-      setAuctions(
-        (data || []).map((a) => ({
-          ...a,
-          rejectionReason: reasonMap[a.products?.id] || null,
-          winnerName: winnerMap[a.winner_id] || null,
-          orderInfo: orderMap[a.id] || null,
-        }))
-      );
-    } catch (err) {
-      console.error(err);
-      toast.error("Something went wrong");
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // ── Actions — optimistic local update ─────────────────────────────
   const handlePause = async (auction) => {
     try {
       setProcessing(auction.id);
+      updateAuctionLocally(auction.id, { status: "paused", paused_by: "seller" });
       await pauseAuction(auction.id);
       toast.success("Auction paused");
-      fetchAuctions();
     } catch (err) {
+      updateAuctionLocally(auction.id, { status: "live", paused_by: null });
       toast.error(err.message || "Failed to pause");
     } finally { setProcessing(null); }
   };
@@ -136,10 +52,11 @@ const AuctionManagement = ({ openCreateAuction }) => {
   const handleResume = async (auction) => {
     try {
       setProcessing(auction.id);
+      updateAuctionLocally(auction.id, { status: "live", paused_by: null });
       await resumeAuction(auction.id, auction.paused_by);
       toast.success("Auction resumed");
-      fetchAuctions();
     } catch (err) {
+      updateAuctionLocally(auction.id, { status: "paused", paused_by: auction.paused_by });
       toast.error(err.message || "Failed to resume");
     } finally { setProcessing(null); }
   };
@@ -148,10 +65,11 @@ const AuctionManagement = ({ openCreateAuction }) => {
     if (!window.confirm(`Close auction for "${auction.products?.title}"?`)) return;
     try {
       setProcessing(auction.id);
+      updateAuctionLocally(auction.id, { status: "ended" });
       await closeAuction(auction.id);
       toast.success("Auction closed");
-      fetchAuctions();
     } catch (err) {
+      updateAuctionLocally(auction.id, { status: auction.status });
       toast.error("Failed to close auction");
     } finally { setProcessing(null); }
   };
@@ -160,14 +78,16 @@ const AuctionManagement = ({ openCreateAuction }) => {
     if (!window.confirm(`Cancel auction for "${auction.products?.title}"? This cannot be undone.`)) return;
     try {
       setProcessing(auction.id);
+      updateAuctionLocally(auction.id, { status: "cancelled" });
       await cancelAuction(auction.id);
       toast.success("Auction cancelled");
-      fetchAuctions();
     } catch (err) {
+      updateAuctionLocally(auction.id, { status: auction.status });
       toast.error("Failed to cancel auction");
     } finally { setProcessing(null); }
   };
 
+  // ── Edit modal ────────────────────────────────────────────────────
   const openEdit = (auction) => {
     if (auction.approval_status !== "pending") {
       toast.error("You can only edit auctions that are pending approval.");
@@ -191,12 +111,13 @@ const AuctionManagement = ({ openCreateAuction }) => {
 
   const handleNewImageChange = (e) => {
     const files = Array.from(e.target.files);
-    const totalAfter = editImages.length + newImages.length + files.length;
-    if (totalAfter > 6) { toast.error("Maximum 6 images allowed."); return; }
-    const previews = files.map((file) => ({
-      file, preview: URL.createObjectURL(file),
-    }));
-    setNewImages((prev) => [...prev, ...previews]);
+    if (editImages.length + newImages.length + files.length > 6) {
+      toast.error("Maximum 6 images allowed."); return;
+    }
+    setNewImages((prev) => [
+      ...prev,
+      ...files.map((file) => ({ file, preview: URL.createObjectURL(file) })),
+    ]);
   };
 
   const removeExistingImage = (index) => {
@@ -217,7 +138,7 @@ const AuctionManagement = ({ openCreateAuction }) => {
 
   const handleSaveEdit = async () => {
     if (!editForm.title.trim()) { toast.error("Title is required"); return; }
-    if (!editForm.category) { toast.error("Category is required"); return; }
+    if (!editForm.category)     { toast.error("Category is required"); return; }
     if (!editForm.start_time || !editForm.end_time) {
       toast.error("Start and end time are required"); return;
     }
@@ -230,96 +151,63 @@ const AuctionManagement = ({ openCreateAuction }) => {
 
     try {
       setSaving(true);
-
       const productId = editAuction.products?.id;
       const auctionId = editAuction.id;
 
-      const { error: productError } = await supabase
-        .from("products")
-        .update({
-          title: editForm.title,
-          category: editForm.category,
-          description: editForm.description,
-          base_price: parseFloat(editForm.base_price) || 0,
-        })
-        .eq("id", productId);
+      // Update product
+      const { error: productError } = await supabase.from("products").update({
+        title: editForm.title,
+        category: editForm.category,
+        description: editForm.description,
+        base_price: parseFloat(editForm.base_price) || 0,
+      }).eq("id", productId);
+      if (productError) { toast.error("Error updating product"); return; }
 
-      if (productError) {
-        toast.error("Error updating product");
-        console.error(productError);
-        return;
-      }
+      // Update auction timing
+      const { error: auctionError } = await supabase.from("auctions").update({
+        start_time: new Date(editForm.start_time).toISOString(),
+        end_time: new Date(editForm.end_time).toISOString(),
+        min_increment: parseFloat(editForm.min_increment) || 0,
+      }).eq("id", auctionId);
+      if (auctionError) { toast.error("Error updating auction timing"); return; }
 
-      const { error: auctionError } = await supabase
-        .from("auctions")
-        .update({
-          start_time: new Date(editForm.start_time).toISOString(),
-          end_time: new Date(editForm.end_time).toISOString(),
-          min_increment: parseFloat(editForm.min_increment) || 0,
-        })
-        .eq("id", auctionId);
-
-      if (auctionError) {
-        toast.error("Error updating auction timing");
-        console.error(auctionError);
-        return;
-      }
-
+      // Upload new images
       const uploadedImages = [];
       for (let i = 0; i < newImages.length; i++) {
-        const img = newImages[i];
         const filePath = `products/${productId}/image_edit_${Date.now()}_${i}`;
         const { error: uploadError } = await supabase.storage
           .from("auction-images")
-          .upload(filePath, img.file, { upsert: true });
-
-        if (uploadError) {
-          toast.error(`Error uploading image ${i + 1}`);
-          console.error(uploadError);
-          return;
-        }
-
+          .upload(filePath, newImages[i].file, { upsert: true });
+        if (uploadError) { toast.error(`Error uploading image ${i + 1}`); return; }
         const { data: urlData } = supabase.storage
-          .from("auction-images")
-          .getPublicUrl(filePath);
+          .from("auction-images").getPublicUrl(filePath);
         uploadedImages.push({ image_url: urlData.publicUrl, is_primary: false });
       }
 
+      // Replace all images
       await supabase.from("product_images").delete().eq("product_id", productId);
-
       const allImages = [
         ...editImages.map((img, i) => ({
-          product_id: productId,
-          image_url: img.image_url,
-          is_primary: i === 0,
+          product_id: productId, image_url: img.image_url, is_primary: i === 0,
         })),
         ...uploadedImages.map((img, i) => ({
-          product_id: productId,
-          image_url: img.image_url,
+          product_id: productId, image_url: img.image_url,
           is_primary: editImages.length === 0 && i === 0,
         })),
       ];
-
       if (allImages.length > 0) {
         allImages[0].is_primary = true;
         for (let i = 1; i < allImages.length; i++) allImages[i].is_primary = false;
       }
-
-      const { error: imgInsertError } = await supabase
-        .from("product_images")
-        .insert(allImages);
-
-      if (imgInsertError) {
-        toast.error("Error saving images");
-        console.error(imgInsertError);
-        return;
-      }
+      const { error: imgErr } = await supabase.from("product_images").insert(allImages);
+      if (imgErr) { toast.error("Error saving images"); return; }
 
       toast.success("Auction updated successfully");
       setEditAuction(null);
       setNewImages([]);
       setEditImages([]);
-      fetchAuctions();
+      // Refetch to get accurate data including new images
+      refetchAuctions();
 
     } catch (err) {
       console.error(err);
@@ -329,6 +217,7 @@ const AuctionManagement = ({ openCreateAuction }) => {
     }
   };
 
+  // ── Filtered + computed ───────────────────────────────────────────
   const filteredAuctions = auctions.filter((a) => {
     const title = a.products?.title?.toLowerCase() || "";
     const matchesSearch =
@@ -339,17 +228,17 @@ const AuctionManagement = ({ openCreateAuction }) => {
   });
 
   const stats = useMemo(() => ({
-    total: auctions.length,
-    live: auctions.filter((a) => a.status === "live").length,
-    pending: auctions.filter((a) => a.approval_status === "pending").length,
+    total:    auctions.length,
+    live:     auctions.filter((a) => a.status === "live").length,
+    pending:  auctions.filter((a) => a.approval_status === "pending").length,
     rejected: auctions.filter((a) => a.approval_status === "rejected").length,
   }), [auctions]);
 
   const statsData = [
-    { title: "Total Auctions", value: loading ? "..." : stats.total, subtitle: "All created auctions" },
-    { title: "Live Auctions", value: loading ? "..." : stats.live, subtitle: "Currently running" },
-    { title: "Pending Approval", value: loading ? "..." : stats.pending, subtitle: "Awaiting admin review" },
-    { title: "Rejected", value: loading ? "..." : stats.rejected, subtitle: "Declined by admin" },
+    { title: "Total Auctions",    value: auctionsLoading ? "..." : stats.total,    subtitle: "All created auctions" },
+    { title: "Live Auctions",     value: auctionsLoading ? "..." : stats.live,     subtitle: "Currently running" },
+    { title: "Pending Approval",  value: auctionsLoading ? "..." : stats.pending,  subtitle: "Awaiting admin review" },
+    { title: "Rejected",          value: auctionsLoading ? "..." : stats.rejected, subtitle: "Declined by admin" },
   ];
 
   const statusChartData = useMemo(() => ({
@@ -380,6 +269,12 @@ const AuctionManagement = ({ openCreateAuction }) => {
     });
   };
 
+  const CATEGORIES = [
+    "Artwork","Electronics","Jewelry","Antiques","Furniture",
+    "Interiors","Music","Movies & Cameras","Coins & Stamps",
+    "Fashion","Toys & Models","Luxury Watches",
+  ];
+
   return (
     <div className="seller-page">
 
@@ -390,9 +285,11 @@ const AuctionManagement = ({ openCreateAuction }) => {
         ))}
       </div>
 
-      {/* CREATE BUTTON */}
+      {/* CREATE BUTTON — navigates to route */}
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "1rem" }}>
-        <button className="create-btn" onClick={openCreateAuction}>+ Create Auction</button>
+        <button className="create-btn" onClick={() => navigate("/seller/create-auction")}>
+          + Create Auction
+        </button>
       </div>
 
       {/* TABLE */}
@@ -415,7 +312,7 @@ const AuctionManagement = ({ openCreateAuction }) => {
           </select>
         </div>
 
-        {loading ? (
+        {auctionsLoading ? (
           <div className="loading-state">Loading auctions...</div>
         ) : (
           <div className="table-wrapper">
@@ -444,7 +341,6 @@ const AuctionManagement = ({ openCreateAuction }) => {
                       <td>{a.products?.category || "—"}</td>
                       <td>PKR {a.products?.base_price?.toLocaleString() || "—"}</td>
                       <td>
-                        {/* highest_bid = current bid placed by highest bidder */}
                         {a.highest_bid && a.highest_bid > 0
                           ? `PKR ${a.highest_bid.toLocaleString()}`
                           : <span style={{ color: "#999", fontSize: "13px" }}>No bids yet</span>
@@ -466,7 +362,6 @@ const AuctionManagement = ({ openCreateAuction }) => {
                         />
                       </td>
                       <td className="actions">
-
                         {a.approval_status === "pending" && (
                           <>
                             <ActionButton label="Edit" variant="secondary"
@@ -475,7 +370,6 @@ const AuctionManagement = ({ openCreateAuction }) => {
                               onClick={() => handleCancel(a)} disabled={processing === a.id} />
                           </>
                         )}
-
                         {a.status === "live" && a.approval_status === "approved" && (
                           <>
                             <ActionButton label="Pause" variant="secondary"
@@ -484,7 +378,6 @@ const AuctionManagement = ({ openCreateAuction }) => {
                               onClick={() => handleClose(a)} disabled={processing === a.id} />
                           </>
                         )}
-
                         {a.status === "paused" && a.approval_status === "approved" && (
                           <>
                             {a.paused_by !== "admin" && (
@@ -495,22 +388,18 @@ const AuctionManagement = ({ openCreateAuction }) => {
                               onClick={() => handleClose(a)} disabled={processing === a.id} />
                           </>
                         )}
-
                         {a.status === "scheduled" && a.approval_status === "approved" && (
                           <ActionButton label="Cancel" variant="danger"
                             onClick={() => handleCancel(a)} disabled={processing === a.id} />
                         )}
-
                         {a.status === "ended" && (
                           <ActionButton label="View Result" variant="secondary"
                             onClick={() => setSelectedResult(a)} />
                         )}
-
                         {a.approval_status === "rejected" && (
                           <ActionButton label="View Reason" variant="danger"
                             onClick={() => setShowReason(a.rejectionReason || "No reason provided")} />
                         )}
-
                       </td>
                     </tr>
                   ))
@@ -531,117 +420,44 @@ const AuctionManagement = ({ openCreateAuction }) => {
         </div>
       </div>
 
-      {/* ── VIEW RESULT MODAL — styled ── */}
+      {/* VIEW RESULT MODAL */}
       {selectedResult && (
         <div className="modal-overlay" onClick={() => setSelectedResult(null)}>
           <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-
             <h3 style={{ marginBottom: "4px" }}>Auction Result</h3>
             <p style={{ fontSize: "13px", color: "#888", marginBottom: "20px" }}>
               {selectedResult.products?.title}
             </p>
-
             <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
-
-              {/* Winner */}
-              <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "12px 0", borderBottom: "1px solid #f0f0f0",
-              }}>
-                <span style={{ fontSize: "13px", color: "#888", fontWeight: "500" }}>Winner</span>
-                <span style={{ fontSize: "14px", fontWeight: "600", color: "#1a1a1a" }}>
-                  {selectedResult.winnerName || "No winner"}
-                </span>
-              </div>
-
-              {/* Final Bid */}
-              <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "12px 0", borderBottom: "1px solid #f0f0f0",
-              }}>
-                <span style={{ fontSize: "13px", color: "#888", fontWeight: "500" }}>Final Bid</span>
-                <span style={{
-                  fontSize: "16px", fontWeight: "700",
-                  color: selectedResult.highest_bid > 0 ? "#10b981" : "#999",
+              {[
+                ["Winner", selectedResult.winnerName || "No winner"],
+                ["Final Bid", selectedResult.highest_bid > 0
+                  ? `PKR ${selectedResult.highest_bid.toLocaleString()}`
+                  : "No bids placed"],
+                ["Total Bids", selectedResult.bids?.length || 0],
+                ["Ended At", formatDate(selectedResult.end_time)],
+                ["Order Status", selectedResult.orderInfo?.orderStatus
+                  ? selectedResult.orderInfo.orderStatus.charAt(0).toUpperCase() +
+                    selectedResult.orderInfo.orderStatus.slice(1)
+                  : "No order yet"],
+                ["Payment Status", selectedResult.orderInfo?.paymentStatus
+                  ? selectedResult.orderInfo.paymentStatus.charAt(0).toUpperCase() +
+                    selectedResult.orderInfo.paymentStatus.slice(1)
+                  : "No payment yet"],
+              ].map(([label, val], i, arr) => (
+                <div key={label} style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "12px 0",
+                  borderBottom: i < arr.length - 1 ? "1px solid #f0f0f0" : "none",
                 }}>
-                  {selectedResult.highest_bid > 0
-                    ? `PKR ${selectedResult.highest_bid.toLocaleString()}`
-                    : "No bids placed"
-                  }
-                </span>
-              </div>
-
-              {/* Total Bids */}
-              <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "12px 0", borderBottom: "1px solid #f0f0f0",
-              }}>
-                <span style={{ fontSize: "13px", color: "#888", fontWeight: "500" }}>Total Bids</span>
-                <span style={{
-                  fontSize: "14px", fontWeight: "600", color: "#1a1a1a",
-                  background: "#f3f4f6", padding: "2px 10px", borderRadius: "20px",
-                }}>
-                  {selectedResult.bids?.length || 0}
-                </span>
-              </div>
-
-              {/* Ended At */}
-              <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "12px 0", borderBottom: "1px solid #f0f0f0",
-              }}>
-                <span style={{ fontSize: "13px", color: "#888", fontWeight: "500" }}>Ended At</span>
-                <span style={{ fontSize: "13px", color: "#555" }}>
-                  {formatDate(selectedResult.end_time)}
-                </span>
-              </div>
-
-              {/* Order Status */}
-              <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "12px 0", borderBottom: "1px solid #f0f0f0",
-              }}>
-                <span style={{ fontSize: "13px", color: "#888", fontWeight: "500" }}>Order Status</span>
-                <span style={{
-                  fontSize: "13px", fontWeight: "600",
-                  color: selectedResult.orderInfo?.orderStatus === "confirmed" ? "#10b981"
-                    : selectedResult.orderInfo?.orderStatus ? "#f59e0b" : "#999",
-                }}>
-                  {selectedResult.orderInfo?.orderStatus
-                    ? selectedResult.orderInfo.orderStatus.charAt(0).toUpperCase() +
-                      selectedResult.orderInfo.orderStatus.slice(1)
-                    : "No order yet"
-                  }
-                </span>
-              </div>
-
-              {/* Payment Status */}
-              <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "12px 0",
-              }}>
-                <span style={{ fontSize: "13px", color: "#888", fontWeight: "500" }}>Payment Status</span>
-                <span style={{
-                  fontSize: "13px", fontWeight: "600",
-                  color: selectedResult.orderInfo?.paymentStatus === "paid" ? "#10b981"
-                    : selectedResult.orderInfo?.paymentStatus ? "#f59e0b" : "#999",
-                }}>
-                  {selectedResult.orderInfo?.paymentStatus
-                    ? selectedResult.orderInfo.paymentStatus.charAt(0).toUpperCase() +
-                      selectedResult.orderInfo.paymentStatus.slice(1)
-                    : "No payment yet"
-                  }
-                </span>
-              </div>
-
+                  <span style={{ fontSize: "13px", color: "#888", fontWeight: "500" }}>{label}</span>
+                  <span style={{ fontSize: "14px", fontWeight: "600", color: "#1a1a1a" }}>{val}</span>
+                </div>
+              ))}
             </div>
-
             <div style={{ marginTop: "20px", display: "flex", justifyContent: "flex-end" }}>
-              <button className="create-btn" onClick={() => setSelectedResult(null)}>
-                Close
-              </button>
+              <button className="create-btn" onClick={() => setSelectedResult(null)}>Close</button>
             </div>
-
           </div>
         </div>
       )}
@@ -654,70 +470,49 @@ const AuctionManagement = ({ openCreateAuction }) => {
             <p className="modal-subtitle">
               You can edit all details since this auction is still pending admin approval.
             </p>
-
             <div className="edit-form">
-
               <div className="edit-field">
                 <label>Title *</label>
                 <input type="text" className="form-input" value={editForm.title}
                   onChange={(e) => setEditForm((p) => ({ ...p, title: e.target.value }))} />
               </div>
-
               <div className="edit-field">
                 <label>Category *</label>
                 <select className="form-select" value={editForm.category}
                   onChange={(e) => setEditForm((p) => ({ ...p, category: e.target.value }))}>
                   <option value="">Select Category</option>
-                  <option value="Artwork">Artwork</option>
-                  <option value="Electronics">Electronics</option>
-                  <option value="Jewelry">Jewelry</option>
-                  <option value="Antiques">Antiques</option>
-                  <option value="Furniture">Furniture</option>
-                  <option value="Interiors">Interiors</option>
-                  <option value="Music">Music</option>
-                  <option value="Movies & Cameras">Movies & Cameras</option>
-                  <option value="Coins & Stamps">Coins & Stamps</option>
-                  <option value="Fashion">Fashion</option>
-                  <option value="Toys & Models">Toys & Models</option>
-                  <option value="Luxury Watches">Luxury Watches</option>
+                  {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
-
               <div className="edit-field">
                 <label>Description</label>
                 <textarea className="form-textarea" value={editForm.description} rows={3}
                   onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))} />
               </div>
-
               <div className="edit-field">
                 <label>Starting Price (PKR)</label>
                 <input type="number" className="form-input" value={editForm.base_price}
                   onChange={(e) => setEditForm((p) => ({ ...p, base_price: e.target.value }))} />
               </div>
-
               <div className="edit-field">
                 <label>Start Time *</label>
                 <input type="datetime-local" className="form-input" value={editForm.start_time}
                   onChange={(e) => setEditForm((p) => ({ ...p, start_time: e.target.value }))} />
               </div>
-
               <div className="edit-field">
                 <label>End Time *</label>
                 <input type="datetime-local" className="form-input" value={editForm.end_time}
                   onChange={(e) => setEditForm((p) => ({ ...p, end_time: e.target.value }))} />
               </div>
-
               <div className="edit-field">
                 <label>Min Bid Increment (PKR)</label>
                 <input type="number" className="form-input" value={editForm.min_increment}
                   onChange={(e) => setEditForm((p) => ({ ...p, min_increment: e.target.value }))} />
               </div>
-
               <div className="edit-field">
                 <label>Product Images (Min 4, Max 6)</label>
                 <input type="file" accept="image/*" multiple className="form-input"
                   onChange={handleNewImageChange} />
-
                 <div className="image-grid" style={{ marginTop: "10px" }}>
                   {editImages.map((img, i) => (
                     <div key={`existing-${i}`} className="image-preview-box">
@@ -740,13 +535,9 @@ const AuctionManagement = ({ openCreateAuction }) => {
                   Total: {editImages.length + newImages.length} image(s) — min 4, max 6
                 </p>
               </div>
-
             </div>
-
             <div className="modal-actions">
-              <button className="close-btn" onClick={() => setEditAuction(null)} disabled={saving}>
-                Cancel
-              </button>
+              <button className="close-btn" onClick={() => setEditAuction(null)} disabled={saving}>Cancel</button>
               <button className="create-btn" onClick={handleSaveEdit} disabled={saving}>
                 {saving ? "Saving..." : "Save Changes"}
               </button>
@@ -767,7 +558,6 @@ const AuctionManagement = ({ openCreateAuction }) => {
           </div>
         </div>
       )}
-
     </div>
   );
 };

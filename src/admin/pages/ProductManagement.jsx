@@ -1,8 +1,9 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import { Doughnut } from "react-chartjs-2";
 import { supabase } from "../../supabase/supabase";
 import { useAuthContext } from "../../context/AuthContext";
+import { useAdminContext } from "../../context/AdminContext";
 import toast from "react-hot-toast";
 import StatCard from "../../common/components/StatCard";
 import StatusBadge from "../../common/components/StatusBadge";
@@ -14,136 +15,54 @@ ChartJS.register(ArcElement, Tooltip, Legend);
 
 const ProductManagement = () => {
   const { user } = useAuthContext();
+  const {
+    pendingProducts,
+    approvedProducts,
+    rejectedProducts,
+    productsLoading,
+    refetchProducts,
+  } = useAdminContext();
 
-  const [pendingProducts, setPendingProducts] = useState([]);
-  const [approvedProducts, setApprovedProducts] = useState([]);
-  const [rejectedProducts, setRejectedProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // ── UI-only local state ───────────────────────────────────────────
   const [selectedImages, setSelectedImages] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [reasonText, setReasonText] = useState("");
   const [processing, setProcessing] = useState(false);
 
-  useEffect(() => {
-    fetchProducts();
-  }, []);
-
-  const fetchProducts = async () => {
-    try {
-      setLoading(true);
-
-      const { data, error } = await supabase
-        .from("products")
-        .select(`
-          *,
-          product_images ( image_url, is_primary ),
-          sellers (
-            id,
-            business_name,
-            user_id,
-            profiles ( name )
-          )
-        `)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        toast.error("Error fetching products");
-        console.error(error);
-        return;
-      }
-
-      const pending = [];
-      const approved = [];
-      const rejected = [];
-
-      for (const product of data) {
-        const primaryImage =
-          product.product_images?.find((img) => img.is_primary) ||
-          product.product_images?.[0];
-
-        const enriched = {
-          ...product,
-          sellerName: product.sellers?.profiles?.name || "—",
-          businessName: product.sellers?.business_name || "—",
-          sellerId: product.sellers?.user_id,
-          primaryImage: primaryImage?.image_url || null,
-          allImages: product.product_images || [],
-        };
-
-        if (product.status === "pending") pending.push(enriched);
-        else if (product.status === "active") approved.push(enriched);
-        else if (product.status === "rejected") rejected.push(enriched);
-      }
-
-      setPendingProducts(pending);
-      setApprovedProducts(approved);
-      setRejectedProducts(rejected);
-
-    } catch (err) {
-      console.error(err);
-      toast.error("Something went wrong");
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // ── Approve product ───────────────────────────────────────────────
   const handleApprove = async (product) => {
     try {
       setProcessing(true);
 
-      // Step 1: Update product status
-      const { error: productError } = await supabase
-        .from("products")
-        .update({ status: "active" })
-        .eq("id", product.id);
+      const [{ error: productErr }, { error: auctionErr }] = await Promise.all([
+        supabase.from("products").update({ status: "active" }).eq("id", product.id),
+        supabase.from("auctions")
+          .update({ approval_status: "approved", status: "scheduled" })
+          .eq("product_id", product.id),
+      ]);
 
-      if (productError) {
-        toast.error("Error approving product");
-        console.error("Product approve error:", productError);
-        return;
-      }
+      if (productErr) { toast.error("Error approving product"); return; }
+      if (auctionErr) { toast.error("Error approving auction");  return; }
 
-      // Step 2: Approve linked auction
-      const { error: auctionError } = await supabase
-        .from("auctions")
-        .update({ approval_status: "approved", status: "scheduled" })
-        .eq("product_id", product.id);
-
-      if (auctionError) {
-        toast.error("Error approving auction");
-        console.error("Auction approve error:", auctionError);
-        return;
-      }
-
-      // Step 3: Log admin action — non-critical, don't block
-      try {
-        await supabase.from("admin_actions").insert({
-          admin_id: user.id,
-          action_type: "approve",
-          target_id: product.id,
-          target_table: "products",
+      // Non-critical: audit + notification in parallel, don't await sequentially
+      await Promise.all([
+        supabase.from("admin_actions").insert({
+          admin_id: user.id, action_type: "approve",
+          target_id: product.id, target_table: "products",
           remarks: "Product and auction approved by admin",
-        });
-      } catch (logErr) {
-        console.error("Admin action log error (non-critical):", logErr);
-      }
-
-      // Step 4: Notify seller
-      if (product.sellerId) {
-        await supabase.from("notifications").insert({
-          user_id: product.sellerId,
-          title: "Product Approved! 🎉",
-          message: `Your product "${product.title}" has been approved and the auction is now scheduled.`,
-          type: "approval",
-          notification_for: "seller",
-          is_read: false,
-        });
-      }
+        }).catch((e) => console.error("Admin log error:", e)),
+        product.sellerId
+          ? supabase.from("notifications").insert({
+              user_id: product.sellerId,
+              title: "Product Approved! 🎉",
+              message: `Your product "${product.title}" has been approved and the auction is now scheduled.`,
+              type: "approval", notification_for: "seller", is_read: false,
+            })
+          : Promise.resolve(),
+      ]);
 
       toast.success(`"${product.title}" approved!`);
-      setPendingProducts((prev) => prev.filter((p) => p.id !== product.id));
-      setApprovedProducts((prev) => [...prev, { ...product, status: "active" }]);
-
+      refetchProducts(); // ✅ context will also update via realtime
     } catch (err) {
       console.error(err);
       toast.error("Something went wrong");
@@ -152,108 +71,65 @@ const ProductManagement = () => {
     }
   };
 
-  const openRejectModal = (product) => {
-    setSelectedProduct(product);
-    setReasonText("");
-  };
-
+  // ── Reject product ────────────────────────────────────────────────
   const handleConfirmReject = async () => {
-    if (!reasonText.trim()) {
-      toast.error("Please write a reason");
-      return;
-    }
-
+    if (!reasonText.trim()) { toast.error("Please write a reason"); return; }
     try {
       setProcessing(true);
 
-      // Step 1: Update product status
-      const { error: productError } = await supabase
-        .from("products")
-        .update({ status: "rejected" })
-        .eq("id", selectedProduct.id);
+      const [{ error: productErr }, { error: auctionErr }] = await Promise.all([
+        supabase.from("products").update({ status: "rejected" }).eq("id", selectedProduct.id),
+        supabase.from("auctions").update({ approval_status: "rejected" }).eq("product_id", selectedProduct.id),
+      ]);
 
-      if (productError) {
-        toast.error("Error rejecting product");
-        console.error("Product reject error:", productError);
-        return;
-      }
+      if (productErr) { toast.error("Error rejecting product"); return; }
+      if (auctionErr) { toast.error("Error rejecting auction");  return; }
 
-      // Step 2: Reject linked auction
-      const { error: auctionError } = await supabase
-        .from("auctions")
-        .update({ approval_status: "rejected" })
-        .eq("product_id", selectedProduct.id);
-
-      if (auctionError) {
-        toast.error("Error rejecting auction");
-        console.error("Auction reject error:", auctionError);
-        return;
-      }
-
-      // Step 3: Log admin action — non-critical, don't block
-      try {
-        await supabase.from("admin_actions").insert({
-          admin_id: user.id,
-          action_type: "reject",
-          target_id: selectedProduct.id,
-          target_table: "products",
+      await Promise.all([
+        supabase.from("admin_actions").insert({
+          admin_id: user.id, action_type: "reject",
+          target_id: selectedProduct.id, target_table: "products",
           remarks: reasonText,
-        });
-      } catch (logErr) {
-        console.error("Admin action log error (non-critical):", logErr);
-      }
-
-      // Step 4: Notify seller
-      if (selectedProduct.sellerId) {
-        await supabase.from("notifications").insert({
-          user_id: selectedProduct.sellerId,
-          title: "Product Rejected",
-          message: `Your product "${selectedProduct.title}" was rejected. Reason: ${reasonText}`,
-          type: "approval",
-          notification_for: "seller",
-          is_read: false,
-        });
-      }
+        }).catch((e) => console.error("Admin log error:", e)),
+        selectedProduct.sellerId
+          ? supabase.from("notifications").insert({
+              user_id: selectedProduct.sellerId,
+              title: "Product Rejected",
+              message: `Your product "${selectedProduct.title}" was rejected. Reason: ${reasonText}`,
+              type: "approval", notification_for: "seller", is_read: false,
+            })
+          : Promise.resolve(),
+      ]);
 
       toast.success(`"${selectedProduct.title}" rejected`);
-      setPendingProducts((prev) =>
-        prev.filter((p) => p.id !== selectedProduct.id)
-      );
-      setRejectedProducts((prev) => [
-        ...prev,
-        { ...selectedProduct, status: "rejected", reason: reasonText },
-      ]);
       setSelectedProduct(null);
-
+      refetchProducts(); // ✅
     } catch (err) {
-      console.error("Reject error:", err);
+      console.error(err);
       toast.error("Something went wrong");
     } finally {
       setProcessing(false);
     }
   };
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return "—";
-    return new Date(dateStr).toLocaleDateString("en-PK", {
-      year: "numeric", month: "short", day: "numeric",
-    });
-  };
+  const formatDate = (d) => !d ? "—" : new Date(d).toLocaleDateString("en-PK", {
+    year: "numeric", month: "short", day: "numeric",
+  });
 
-  const renderEmptyRow = (colSpan, message) => (
-    <tr><td colSpan={colSpan} className="empty-row">{message}</td></tr>
+  const renderEmptyRow = (colSpan, msg) => (
+    <tr><td colSpan={colSpan} className="empty-row">{msg}</td></tr>
   );
 
-  const totalPending = pendingProducts.length;
+  const totalPending  = pendingProducts.length;
   const totalApproved = approvedProducts.length;
   const totalRejected = rejectedProducts.length;
   const totalProducts = totalPending + totalApproved + totalRejected;
 
   const statsData = [
-    { title: "Total Products", value: loading ? "..." : totalProducts, subtitle: "All submitted products" },
-    { title: "Pending Products", value: loading ? "..." : totalPending, subtitle: "Awaiting approval" },
-    { title: "Approved Products", value: loading ? "..." : totalApproved, subtitle: "Live listings" },
-    { title: "Rejected Products", value: loading ? "..." : totalRejected, subtitle: "Not approved" },
+    { title: "Total Products",    value: productsLoading ? "..." : totalProducts, subtitle: "All submitted products" },
+    { title: "Pending Products",  value: productsLoading ? "..." : totalPending,  subtitle: "Awaiting approval" },
+    { title: "Approved Products", value: productsLoading ? "..." : totalApproved, subtitle: "Live listings" },
+    { title: "Rejected Products", value: productsLoading ? "..." : totalRejected, subtitle: "Not approved" },
   ];
 
   const productStatusData = useMemo(() => ({
@@ -275,23 +151,15 @@ const ProductManagement = () => {
       <table className="admin-table">
         <thead>
           <tr>
-            <th>Product</th>
-            <th>Category</th>
-            <th>Seller</th>
-            <th>Business</th>
-            <th>Base Price</th>
-            <th>Condition</th>
-            <th>Images</th>
-            <th>Date</th>
-            <th>Status</th>
+            <th>Product</th><th>Category</th><th>Seller</th><th>Business</th>
+            <th>Base Price</th><th>Condition</th><th>Images</th><th>Date</th><th>Status</th>
             {showActions && <th>Actions</th>}
-            {showReason && <th>Reason</th>}
+            {showReason  && <th>Reason</th>}
           </tr>
         </thead>
         <tbody>
-          {products.length === 0
-            ? renderEmptyRow(colSpan, "No products found.")
-            : products.map((product) => (
+          {products.length === 0 ? renderEmptyRow(colSpan, "No products found.") :
+            products.map((product) => (
               <tr key={product.id}>
                 <td>{product.title}</td>
                 <td>{product.category}</td>
@@ -308,19 +176,18 @@ const ProductManagement = () => {
                 <td>
                   <StatusBadge
                     label={product.status === "active" ? "Approved" : product.status === "pending" ? "Pending" : "Rejected"}
-                    type={product.status === "active" ? "approved" : product.status === "pending" ? "pending" : "rejected"}
+                    type={product.status === "active" ? "approved" : product.status}
                   />
                 </td>
                 {showActions && (
                   <td className="actions">
                     <ActionButton label="Approve" variant="success" onClick={() => handleApprove(product)} disabled={processing} />
-                    <ActionButton label="Reject" variant="danger" onClick={() => openRejectModal(product)} disabled={processing} />
+                    <ActionButton label="Reject"  variant="danger"
+                      onClick={() => { setSelectedProduct(product); setReasonText(""); }} disabled={processing} />
                   </td>
                 )}
                 {showReason && (
-                  <td>
-                    <span className="long-text" title={product.reason}>{product.reason || "—"}</span>
-                  </td>
+                  <td><span className="long-text" title={product.reason}>{product.reason || "—"}</span></td>
                 )}
               </tr>
             ))}
@@ -333,24 +200,24 @@ const ProductManagement = () => {
     <div className="admin-page">
 
       <div className="stats-grid">
-        {statsData.map((item, index) => (
-          <StatCard key={index} title={item.title} value={item.value} subtitle={item.subtitle} />
+        {statsData.map((item, i) => (
+          <StatCard key={i} title={item.title} value={item.value} subtitle={item.subtitle} />
         ))}
       </div>
 
       <div className="admin-section">
         <h3 className="admin-section-heading">Pending Products</h3>
-        {loading ? <div className="loading-state">Loading products...</div> : renderProductTable(pendingProducts, 10, true, false)}
+        {productsLoading ? <div className="loading-state">Loading products...</div> : renderProductTable(pendingProducts, 10, true, false)}
       </div>
 
       <div className="admin-section">
         <h3 className="admin-section-heading">Approved Products</h3>
-        {loading ? <div className="loading-state">Loading products...</div> : renderProductTable(approvedProducts, 9, false, false)}
+        {productsLoading ? <div className="loading-state">Loading products...</div> : renderProductTable(approvedProducts, 9, false, false)}
       </div>
 
       <div className="admin-section">
         <h3 className="admin-section-heading">Rejected Products</h3>
-        {loading ? <div className="loading-state">Loading products...</div> : renderProductTable(rejectedProducts, 10, false, true)}
+        {productsLoading ? <div className="loading-state">Loading products...</div> : renderProductTable(rejectedProducts, 10, false, true)}
       </div>
 
       {/* IMAGES MODAL */}
@@ -376,15 +243,10 @@ const ProductManagement = () => {
             <p style={{ fontSize: "13px", color: "#666", marginBottom: "8px" }}>
               Rejecting: <strong>{selectedProduct.title}</strong>
             </p>
-            <textarea
-              placeholder="Write reason here..."
-              value={reasonText}
-              onChange={(e) => setReasonText(e.target.value)}
-            />
+            <textarea placeholder="Write reason here..." value={reasonText}
+              onChange={(e) => setReasonText(e.target.value)} />
             <div className="modal-actions">
-              <button className="cancel" onClick={() => setSelectedProduct(null)} disabled={processing}>
-                Cancel
-              </button>
+              <button className="cancel" onClick={() => setSelectedProduct(null)} disabled={processing}>Cancel</button>
               <button className="confirm" onClick={handleConfirmReject} disabled={processing}>
                 {processing ? "Processing..." : "Confirm"}
               </button>

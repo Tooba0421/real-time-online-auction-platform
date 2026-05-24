@@ -1,3 +1,4 @@
+import { useLocation } from "react-router-dom";
 import {
   FaTachometerAlt,
   FaGavel,
@@ -6,15 +7,14 @@ import {
   FaTruck,
   FaBars,
 } from "react-icons/fa";
-
 import "../styles/sellerDashboard.css";
 
 const sellerMenu = [
-  { name: "Dashboard Overview", icon: <FaTachometerAlt /> },
+  { name: "Dashboard Overview",      icon: <FaTachometerAlt /> },
   { name: "Live Auction Monitoring", icon: <FaGavel /> },
-  { name: "Auction Management", icon: <FaTasks /> },
-  { name: "Earnings & Payouts", icon: <FaMoneyBillWave /> },
-  { name: "Orders & Delivery", icon: <FaTruck /> },
+  { name: "Auction Management",      icon: <FaTasks /> },
+  { name: "Earnings & Payouts",      icon: <FaMoneyBillWave /> },
+  { name: "Orders & Delivery",       icon: <FaTruck /> },
 ];
 
 const SellerSidebar = ({
@@ -32,15 +32,11 @@ const SellerSidebar = ({
         ${isMobile && isCollapsed ? "open" : ""}
       `}
     >
-      {/* ===== Desktop Title ===== */}
+      {/* Desktop Title */}
       <h3 className="sidebar-title desktop-title">AUCTION SELLER</h3>
 
-      {/* ===== Mobile Toggle ===== */}
-      <div
-        className={`sidebar-header mobile-toggle ${
-          isCollapsed ? "expanded" : ""
-        }`}
-      >
+      {/* Mobile Toggle */}
+      <div className={`sidebar-header mobile-toggle ${isCollapsed ? "expanded" : ""}`}>
         <FaBars
           className="sidebar-toggle"
           onClick={() => setIsCollapsed(!isCollapsed)}
@@ -54,9 +50,7 @@ const SellerSidebar = ({
         {sellerMenu.map((item) => (
           <li key={item.name}>
             <button
-              className={`sidebar-item ${
-                activeItem === item.name ? "active" : ""
-              }`}
+              className={`sidebar-item ${activeItem === item.name ? "active" : ""}`}
               onClick={() => setActiveItem(item.name)}
             >
               <span className="sidebar-icon">{item.icon}</span>

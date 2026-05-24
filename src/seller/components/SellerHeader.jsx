@@ -12,21 +12,21 @@ const SellerHeader = ({ title }) => {
 
   useEffect(() => {
     if (!user) return;
+
     fetchUnreadCount();
 
-    const subscription = supabase
-      .channel(`seller-notifications-${user.id}`)
+    // Realtime for notification badge — scoped to this user only
+    const channel = supabase
+      .channel(`seller-notif-badge-${user.id}`)
       .on("postgres_changes", {
         event: "*",
         schema: "public",
         table: "notifications",
         filter: `user_id=eq.${user.id}`,
-      }, () => {
-        fetchUnreadCount();
-      })
+      }, () => fetchUnreadCount())
       .subscribe();
 
-    return () => subscription.unsubscribe();
+    return () => supabase.removeChannel(channel);
   }, [user]);
 
   const fetchUnreadCount = async () => {
@@ -51,8 +51,7 @@ const SellerHeader = ({ title }) => {
       </div>
 
       <div className="header-right">
-
-        {/* Notification Bell — navigates to shared /notifications page */}
+        {/* Notification Bell */}
         <div
           className="header-notification"
           onClick={() => navigate("/notifications")}
@@ -66,7 +65,7 @@ const SellerHeader = ({ title }) => {
           )}
         </div>
 
-        {/* Profile */}
+        {/* Profile Avatar */}
         <div
           className="header-profile"
           onClick={() => navigate("/profile")}
@@ -76,7 +75,6 @@ const SellerHeader = ({ title }) => {
             {getInitial()}
           </div>
         </div>
-
       </div>
     </nav>
   );
