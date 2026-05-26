@@ -89,18 +89,18 @@ export const AdminProvider = ({ children }) => {
     // Show basic data immediately while stats load in background
     const skeleton = rows.map((s) => ({
       ...s,
-      name:        s.profiles?.name  || "—",
-      email:       s.profiles?.email || "—",
-      listings:    0,
+      name: s.profiles?.name || "—",
+      email: s.profiles?.email || "—",
+      listings: 0,
       successRate: "—",
-      earnings:    "PKR 0",
+      earnings: "PKR 0",
     }));
     const bucket = (arr) => {
       const p = [], a = [], r = [];
       arr.forEach((s) => {
-        if (s.is_verified === "pending")                             p.push(s);
-        else if (s.is_verified === "approved")                       a.push(s);
-        else if (["rejected","suspended"].includes(s.is_verified))   r.push(s);
+        if (s.is_verified === "pending") p.push(s);
+        else if (s.is_verified === "approved") a.push(s);
+        else if (["rejected", "suspended"].includes(s.is_verified)) r.push(s);
       });
       return { pending: p, approved: a, rejected: r };
     };
@@ -115,7 +115,7 @@ export const AdminProvider = ({ children }) => {
       supabase.from("auctions")
         .select("seller_id, status")
         .in("seller_id", sellerIds)
-        .in("status", ["live","ended","scheduled"]),
+        .in("status", ["live", "ended", "scheduled"]),
       supabase.from("products")
         .select("seller_id")
         .in("seller_id", sellerIds)
@@ -136,14 +136,14 @@ export const AdminProvider = ({ children }) => {
 
     const enriched = rows.map((s) => {
       const totalEnded = endedMap[s.id] || 0;
-      const totalSold  = soldMap[s.id]  || 0;
+      const totalSold = soldMap[s.id] || 0;
       return {
         ...s,
-        name:        s.profiles?.name  || "—",
-        email:       s.profiles?.email || "—",
-        listings:    listingMap[s.id]  || 0,
+        name: s.profiles?.name || "—",
+        email: s.profiles?.email || "—",
+        listings: listingMap[s.id] || 0,
         successRate: totalEnded > 0 ? `${((totalSold / totalEnded) * 100).toFixed(1)}%` : "0%",
-        earnings:    `PKR ${(earningsMap[s.id] || 0).toLocaleString()}`,
+        earnings: `PKR ${(earningsMap[s.id] || 0).toLocaleString()}`,
       };
     });
     setSellers(bucket(enriched));
@@ -162,7 +162,7 @@ export const AdminProvider = ({ children }) => {
       setPendingSellerEdits(
         (data || []).map((e) => ({
           ...e,
-          userName:  e.profiles?.name  || "—",
+          userName: e.profiles?.name || "—",
           userEmail: e.profiles?.email || "—",
         }))
       );
@@ -192,15 +192,15 @@ export const AdminProvider = ({ children }) => {
     setPendingSubmissions(
       (pendingRes.data || []).map((s) => ({
         ...s,
-        name:         s.profiles?.name  || "—",
-        email:        s.email || s.profiles?.email || "—",
+        name: s.profiles?.name || "—",
+        email: s.email || s.profiles?.email || "—",
         submissionId: s.id,
       }))
     );
     setRejectedSubmissions(
       (rejectedRes.data || []).map((s) => ({
         ...s,
-        name:  s.profiles?.name  || "—",
+        name: s.profiles?.name || "—",
         email: s.email || s.profiles?.email || "—",
       }))
     );
@@ -210,9 +210,9 @@ export const AdminProvider = ({ children }) => {
     setApprovedBuyers(
       buyerRows.map((b) => ({
         ...b,
-        name:        b.profiles?.name  || "—",
-        email:       b.profiles?.email || "—",
-        totalBids:   0,
+        name: b.profiles?.name || "—",
+        email: b.profiles?.email || "—",
+        totalBids: 0,
         auctionsWon: 0,
       }))
     );
@@ -234,9 +234,9 @@ export const AdminProvider = ({ children }) => {
     setApprovedBuyers(
       buyerRows.map((b) => ({
         ...b,
-        name:        b.profiles?.name  || "—",
-        email:       b.profiles?.email || "—",
-        totalBids:   bidCountMap[b.id] || 0,
+        name: b.profiles?.name || "—",
+        email: b.profiles?.email || "—",
+        totalBids: bidCountMap[b.id] || 0,
         auctionsWon: winCountMap[b.id] || 0,
       }))
     );
@@ -255,7 +255,7 @@ export const AdminProvider = ({ children }) => {
       setPendingBuyerEdits(
         (data || []).map((e) => ({
           ...e,
-          userName:  e.profiles?.name  || "—",
+          userName: e.profiles?.name || "—",
           userEmail: e.profiles?.email || "—",
         }))
       );
@@ -283,15 +283,15 @@ export const AdminProvider = ({ children }) => {
         product.product_images?.[0];
       const enriched = {
         ...product,
-        sellerName:   product.sellers?.profiles?.name || "—",
-        businessName: product.sellers?.business_name  || "—",
-        sellerId:     product.sellers?.user_id,
+        sellerName: product.sellers?.profiles?.name || "—",
+        businessName: product.sellers?.business_name || "—",
+        sellerId: product.sellers?.user_id,
         primaryImage: primaryImage?.image_url || null,
-        allImages:    product.product_images  || [],
+        allImages: product.product_images || [],
       };
-      if (product.status === "pending")   pending.push(enriched);
-      else if (product.status === "active")    approved.push(enriched);
-      else if (product.status === "rejected")  rejected.push(enriched);
+      if (product.status === "pending") pending.push(enriched);
+      else if (product.status === "active") approved.push(enriched);
+      else if (product.status === "rejected") rejected.push(enriched);
     }
     setPendingProducts(pending);
     setApprovedProducts(approved);
@@ -303,17 +303,25 @@ export const AdminProvider = ({ children }) => {
     setAuctionsLoading(true);
     const [auctionsRes, bidsRes] = await Promise.all([
       supabase.from("auctions")
-        .select(`*, products ( title, reserved_price ), sellers ( business_name, profiles ( name ) )`)
-        .in("status", ["live","scheduled","paused"])
+        .select(`
+        *,
+        products ( title, reserved_price ),
+        sellers ( id, user_id, business_name, profiles ( id, name ) )
+      `)
+        .in("status", ["live", "scheduled", "paused"])
         .order("created_at", { ascending: false }),
       supabase.from("bids")
-        .select(`*, auctions ( id, products ( title ) ), buyers ( id, profiles ( name ) )`)
+        .select(`
+        *,
+        auctions ( id, products ( title ) ),
+        buyers ( id, profiles ( name ) )
+      `)
         .eq("is_suspicious", true)
         .eq("status", "active")
         .order("bid_time", { ascending: false }),
     ]);
     if (!auctionsRes.error) setActiveAuctions(auctionsRes.data || []);
-    if (!bidsRes.error)     setSuspiciousBids(bidsRes.data  || []);
+    if (!bidsRes.error) setSuspiciousBids(bidsRes.data || []);
     setAuctionsLoading(false);
   }, []);
 
@@ -401,17 +409,17 @@ export const AdminProvider = ({ children }) => {
     });
 
     setHomeStats({
-      totalUsers:        usersRes.count || 0,
-      totalSellers:      sellersRes.count || 0,
-      pendingRequests:   (pendingSellersRes.count || 0) + (pendingBuyersRes.count || 0) +
-                         (pendingProductsRes.count || 0) + (pendingAuctionsRes.count || 0),
-      totalRevenue:      revenueRes.data?.reduce((s, p) => s + (p.total_amount || 0), 0) || 0,
-      totalAuctions:     totalAuctionsRes.count || 0,
+      totalUsers: usersRes.count || 0,
+      totalSellers: sellersRes.count || 0,
+      pendingRequests: (pendingSellersRes.count || 0) + (pendingBuyersRes.count || 0) +
+        (pendingProductsRes.count || 0) + (pendingAuctionsRes.count || 0),
+      totalRevenue: revenueRes.data?.reduce((s, p) => s + (p.total_amount || 0), 0) || 0,
+      totalAuctions: totalAuctionsRes.count || 0,
       completedAuctions: completedAuctionsRes.count || 0,
-      totalBids:         bidsRes.count || 0,
-      monthlyBids:       bidsByMonth,
-      monthlyAuctions:   auctionsByMonth,
-      categoryData:      catCounts,
+      totalBids: bidsRes.count || 0,
+      monthlyBids: bidsByMonth,
+      monthlyAuctions: auctionsByMonth,
+      categoryData: catCounts,
     });
     setHomeLoading(false);
   }, []);
@@ -431,10 +439,12 @@ export const AdminProvider = ({ children }) => {
   useEffect(() => { pendingTxRef.current = pendingTransactions; }, [pendingTransactions]);
 
   const updateTransactionLocally = useCallback((txId, fields) => {
-    setPendingTransactions((prev) => prev.filter((t) => t.id !== txId));
-    setReleasedTransactions((prev) => {
-      const tx = pendingTxRef.current.find((t) => t.id === txId);
-      return tx ? [{ ...tx, ...fields }, ...prev] : prev;
+    setPendingTransactions((prev) => {
+      const txToMove = prev.find((t) => t.id === txId);
+      if (txToMove) {
+        setReleasedTransactions((rel) => [{ ...txToMove, ...fields }, ...rel]);
+      }
+      return prev.filter((t) => t.id !== txId);
     });
   }, []);
 
@@ -532,11 +542,11 @@ export const AdminProvider = ({ children }) => {
             data.product_images?.[0];
           const enriched = {
             ...data,
-            sellerName:   data.sellers?.profiles?.name || "—",
-            businessName: data.sellers?.business_name  || "—",
-            sellerId:     data.sellers?.user_id,
+            sellerName: data.sellers?.profiles?.name || "—",
+            businessName: data.sellers?.business_name || "—",
+            sellerId: data.sellers?.user_id,
             primaryImage: primaryImage?.image_url || null,
-            allImages:    data.product_images || [],
+            allImages: data.product_images || [],
           };
           // Remove from all buckets first, then add to correct bucket
           const removeById = (prev) => prev.filter((p) => p.id !== enriched.id);
@@ -804,7 +814,7 @@ export const AdminProvider = ({ children }) => {
 
     return () => {
       channelsRef.current.forEach((ch) => {
-        try { supabase.removeChannel(ch); } catch (_) {}
+        try { supabase.removeChannel(ch); } catch (_) { }
       });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

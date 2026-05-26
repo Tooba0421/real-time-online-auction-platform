@@ -35,9 +35,9 @@ const CARD_ELEMENT_OPTIONS = {
 };
 
 // ── Fee constants (single source of truth) ────────────────────────
-const SHIPPING_FEE    = 250;
-const SERVICE_TAX_PCT = 0.02; // 2%
-const PLATFORM_FEE_PCT= 0.25; // 25%
+const SHIPPING_FEE     = 250;
+const SERVICE_TAX_PCT  = 0.02; // 2%
+const PLATFORM_FEE_PCT = 0.25; // 25%
 
 const calcAmounts = (winningBid) => {
   const serviceTax   = Math.round(winningBid * SERVICE_TAX_PCT);
@@ -75,9 +75,7 @@ const PaymentForm = ({ auctionData, shippingForm, winningBid }) => {
 
     try {
       // ── Step 1: Create Stripe payment method ──────────────────────
-      // In FYP test mode, createPaymentMethod succeeding = payment approved.
-      // In production you would confirm a PaymentIntent from your backend.
-      const { error: stripeError, paymentMethod } = await stripe.createPaymentMethod({
+      const { error: stripeError } = await stripe.createPaymentMethod({
         type: "card",
         card: elements.getElement(CardElement),
         billing_details: { name: fullName, email },
@@ -101,6 +99,7 @@ const PaymentForm = ({ auctionData, shippingForm, winningBid }) => {
       }
 
       // ── Step 3: Create order ──────────────────────────────────────
+      // ✅ order_date field added — required by orders table
       const { data: orderData, error: orderError } = await supabase
         .from("orders")
         .insert({
@@ -112,6 +111,7 @@ const PaymentForm = ({ auctionData, shippingForm, winningBid }) => {
           shipping_fee: SHIPPING_FEE,
           total_amount: totalAmount,
           order_status: "confirmed",
+          order_date:   new Date().toISOString(), // ✅ FIXED — was missing before
         })
         .select()
         .single();
@@ -176,7 +176,6 @@ const PaymentForm = ({ auctionData, shippingForm, winningBid }) => {
         .is("winner_id", null);
 
       // ── Step 7: Notify seller ─────────────────────────────────────
-      // Include auction_id + product_slug so seller's notification is navigable
       await supabase.from("notifications").insert({
         user_id:          auctionData.sellerUserId,
         title:            `Payment Received for "${auctionData.title}"`,
@@ -255,7 +254,6 @@ const CheckoutPage = () => {
   const location = useLocation();
   const { user } = useAuthContext();
 
-  // Auction data passed via navigate("/checkout", { state: { ... } })
   const {
     auctionId, title, sellerName, sellerId, sellerUserId,
     endDate, totalBids, winningBid, image,
@@ -314,7 +312,6 @@ const CheckoutPage = () => {
 
       <div className="checkout-page">
 
-        {/* Page header */}
         <div className="page-header">
           <button
             className="back-btn"
@@ -325,7 +322,6 @@ const CheckoutPage = () => {
           <h2 className="page-heading">Auction Payment</h2>
         </div>
 
-        {/* Win banner */}
         <div className="auction-win-banner">
           🎉 Congratulations! You won this auction.
           <span>Please complete payment within 24 hours.</span>
@@ -333,10 +329,9 @@ const CheckoutPage = () => {
 
         <div className="checkout-grid">
 
-          {/* ── LEFT ──────────────────────────────────────────────── */}
+          {/* ── LEFT ── */}
           <div className="checkout-left">
 
-            {/* Winning item summary */}
             <div className="card">
               <h3>Winning Item</h3>
               <div className="order-product">
@@ -353,15 +348,14 @@ const CheckoutPage = () => {
               </div>
             </div>
 
-            {/* Shipping address form */}
             <div className="card">
               <h3>Shipping Address</h3>
               <div className="checkout-form-grid">
                 {[
-                  { label: "Full Name",   field: "fullName",  type: "text"  },
-                  { label: "Email",       field: "email",     type: "email" },
-                  { label: "Phone",       field: "phone",     type: "text"  },
-                  { label: "Country",     field: "country",   type: "text"  },
+                  { label: "Full Name", field: "fullName", type: "text"  },
+                  { label: "Email",     field: "email",    type: "email" },
+                  { label: "Phone",     field: "phone",    type: "text"  },
+                  { label: "Country",   field: "country",  type: "text"  },
                 ].map(({ label, field, type }) => (
                   <div className="form-group" key={field}>
                     <label>{label} <span className="compulsory">*</span></label>
@@ -405,7 +399,7 @@ const CheckoutPage = () => {
 
           </div>
 
-          {/* ── RIGHT ─────────────────────────────────────────────── */}
+          {/* ── RIGHT ── */}
           <div className="checkout-right card">
             <div className="order-summary">
 
@@ -429,7 +423,6 @@ const CheckoutPage = () => {
                 <span>PKR {totalAmount.toLocaleString()}</span>
               </div>
 
-              {/* Stripe payment form — must be inside <Elements> */}
               <Elements stripe={stripePromise}>
                 <PaymentForm
                   auctionData={auctionData}

@@ -12,7 +12,7 @@ import "../styles/orderDeliveryManagement.css";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Tooltip, Legend, Filler);
 
-export const OrderDeliveryManagement = () => {
+const OrderDeliveryManagement = () => {
   const { orders, ordersLoading } = useAdminContext();
 
   const [search, setSearch] = useState("");
@@ -37,26 +37,26 @@ export const OrderDeliveryManagement = () => {
   }, [orders, search, filterStatus]);
 
   const stats = useMemo(() => ({
-    total:     orders.length,
+    total: orders.length,
     delivered: orders.filter((o) => o.deliveries?.status === "delivered").length,
     inTransit: orders.filter((o) => o.deliveries?.status === "in_transit").length,
-    pending:   orders.filter((o) => !o.deliveries || o.deliveries?.status === "pending").length,
+    pending: orders.filter((o) => !o.deliveries || o.deliveries?.status === "pending").length,
   }), [orders]);
 
   const statsData = [
-    { title: "Total Orders",      value: ordersLoading ? "..." : stats.total,     subtitle: "All recorded orders" },
-    { title: "Delivered",         value: ordersLoading ? "..." : stats.delivered,  subtitle: "Successfully delivered" },
-    { title: "In Transit",        value: ordersLoading ? "..." : stats.inTransit,  subtitle: "Currently shipping" },
-    { title: "Pending Delivery",  value: ordersLoading ? "..." : stats.pending,    subtitle: "Not yet shipped" },
+    { title: "Total Orders", value: ordersLoading ? "..." : stats.total, subtitle: "All recorded orders" },
+    { title: "Delivered", value: ordersLoading ? "..." : stats.delivered, subtitle: "Successfully delivered" },
+    { title: "In Transit", value: ordersLoading ? "..." : stats.inTransit, subtitle: "Currently shipping" },
+    { title: "Pending Delivery", value: ordersLoading ? "..." : stats.pending, subtitle: "Not yet shipped" },
   ];
 
   const ordersTrend = useMemo(() => {
     const monthly = Array(12).fill(0);
     orders.forEach((o) => {
-      if (o.created_at) monthly[new Date(o.created_at).getMonth()]++;
+      if (o.order_date) monthly[new Date(o.order_date).getMonth()]++; // ← was o.created_at
     });
     return {
-      labels: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
+      labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
       datasets: [{
         label: "Orders",
         data: monthly,
@@ -133,15 +133,15 @@ export const OrderDeliveryManagement = () => {
                 ) : filteredOrders.map((order) => (
                   <tr key={order.id}>
                     <td>{order.auctions?.products?.title || "—"}</td>
-                    <td>{order.buyers?.profiles?.name   || "—"}</td>
-                    <td>{order.sellers?.profiles?.name  || "—"}</td>
+                    <td>{order.buyers?.profiles?.name || "—"}</td>
+                    <td>{order.sellers?.profiles?.name || "—"}</td>
                     <td>PKR {order.amount?.toLocaleString()}</td>
                     <td>PKR {order.service_tax?.toLocaleString()}</td>
                     <td>PKR {order.total_amount?.toLocaleString()}</td>
                     <td>
                       <StatusBadge
                         label={order.payments?.status || "pending"}
-                        type={order.payments?.status  || "pending"}
+                        type={order.payments?.status || "pending"}
                       />
                     </td>
                     <td>
@@ -150,11 +150,11 @@ export const OrderDeliveryManagement = () => {
                     <td>
                       <StatusBadge
                         label={order.deliveries?.status || "pending"}
-                        type={order.deliveries?.status  || "pending"}
+                        type={order.deliveries?.status || "pending"}
                       />
                     </td>
                     <td>{order.deliveries?.courier_service || "—"}</td>
-                    <td>{order.deliveries?.tracking_no    || "—"}</td>
+                    <td>{order.deliveries?.tracking_no || "—"}</td>
                     <td>{formatDate(order.created_at)}</td>
                   </tr>
                 ))}

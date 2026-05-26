@@ -147,43 +147,33 @@ const ProductDetailPage = () => {
       setIsWinner(false);
       return;
     }
-
     const checkWinner = async () => {
       const { data } = await supabase
         .from("buyers")
         .select("id")
         .eq("user_id", user.id)
         .maybeSingle();
-
-      if (data && data.id === auction.winner_id) {
-        setIsWinner(true);
-      } else {
-        setIsWinner(false);
-      }
+      setIsWinner(!!(data && data.id === auction.winner_id));
     };
-
     checkWinner();
   }, [auction, user]);
 
   // Check if winner has already paid
   useEffect(() => {
     if (!auction || !user || auction.status !== "ended" || !isWinner) return;
-
     const checkPayment = async () => {
       const { data } = await supabase
         .from("orders")
         .select("id")
         .eq("auction_id", auction.id)
         .maybeSingle();
-
       if (data) setAlreadyPaid(true);
     };
-
     checkPayment();
   }, [auction, user, isWinner]);
 
   const product = auction?.products;
-  const seller = auction?.sellers;
+  const seller  = auction?.sellers;
   const category = product?.category;
 
   const relatedAuctions = useRelatedAuctions(auctionId, category);
@@ -195,11 +185,11 @@ const ProductDetailPage = () => {
     : [];
 
   const nextImage = () => setCurrentIndex((prev) => (prev + 1) % images.length);
-  const prevImage = () =>
-    setCurrentIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
+  const prevImage = () => setCurrentIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
 
   const minNextBid = (auction?.highest_bid || 0) + (auction?.min_increment || 0);
 
+  // ── handleBid — fetchBuyerRecord called ONCE, reused for both checks ──
   const handleBid = async () => {
     if (!user) {
       toast.error("Please login to place a bid");
@@ -207,34 +197,38 @@ const ProductDetailPage = () => {
       return;
     }
 
-    if (profile?.role !== "buyer") {
-      const buyerRecord = await fetchBuyerRecord(user.id);
-      if (!buyerRecord) {
-        toast.error("Please submit your CNIC to become a verified buyer");
-        setShowCnic(true);
-        return;
-      }
-      if (buyerRecord.is_verified === "pending") {
-        toast.error("Your CNIC is under review. You can bid once approved.");
-        return;
-      }
-      if (buyerRecord.is_verified === "rejected") {
-        toast.error("Your CNIC was rejected. Please resubmit.");
-        setShowCnic(true);
-        return;
-      }
-      toast.error("You need to verify your identity before placing bids");
+    // ✅ Fetch buyer record once — used for verification check AND for placeBid
+    const buyerRecord = await fetchBuyerRecord(user.id);
+
+    // Verification checks
+    if (!buyerRecord) {
+      toast.error("Please submit your CNIC to become a verified buyer");
+      setShowCnic(true);
+      return;
+    }
+    if (buyerRecord.is_verified === "pending") {
+      toast.error("Your CNIC is under review. You can bid once approved.");
+      return;
+    }
+    if (buyerRecord.is_verified === "rejected") {
+      toast.error("Your CNIC was rejected. Please resubmit.");
+      setShowCnic(true);
+      return;
+    }
+    if (buyerRecord.is_verified !== "approved") {
+      toast.error("You need to verify your identity before placing bids.");
       setShowCnic(true);
       return;
     }
 
+    // Bid amount validation
     const validation = validateBid({
       bidAmount,
-      highestBid: auction?.highest_bid || 0,
-      minIncrement: auction?.min_increment || 0,
+      highestBid:    auction?.highest_bid   || 0,
+      minIncrement:  auction?.min_increment  || 0,
       auctionStatus: auction?.status,
-      userRole: profile?.role,
-      userStatus: profile?.status,
+      userRole:      profile?.role,
+      userStatus:    profile?.status,
     });
 
     if (!validation.valid) {
@@ -244,14 +238,10 @@ const ProductDetailPage = () => {
 
     try {
       setBidding(true);
-      const buyerRecord = await fetchBuyerRecord(user.id);
-      if (!buyerRecord) {
-        toast.error("Buyer record not found. Please contact support.");
-        return;
-      }
+      // ✅ buyerRecord already available — no second fetch
       await placeBid({
         auctionId,
-        buyerId: buyerRecord.id,
+        buyerId:   buyerRecord.id,
         bidAmount: Number(bidAmount),
       });
       toast.success(`Bid of PKR ${Number(bidAmount).toLocaleString()} placed successfully!`);
@@ -267,15 +257,15 @@ const ProductDetailPage = () => {
   const handleGoToCheckout = () => {
     navigate("/checkout", {
       state: {
-        auctionId: auction.id,
-        title: product.title,
-        sellerName: seller?.profiles?.name || seller?.business_name || "—",
-        sellerId: auction.seller_id,
+        auctionId:    auction.id,
+        title:        product.title,
+        sellerName:   seller?.profiles?.name || seller?.business_name || "—",
+        sellerId:     auction.seller_id,
         sellerUserId: seller?.user_id || seller?.profiles?.id || null,
-        endDate: auction.end_time,
-        totalBids: bids.length,
-        winningBid: auction.highest_bid,
-        image: images[0] || null,
+        endDate:      auction.end_time,
+        totalBids:    bids.length,
+        winningBid:   auction.highest_bid,
+        image:        images[0] || null,
       },
     });
   };
@@ -345,19 +335,11 @@ const ProductDetailPage = () => {
             {images.length > 0 ? (
               <>
                 <div className="main-image-wrapper">
-                  <img
-                    src={images[currentIndex]}
-                    alt={product.title}
-                    className="main-image"
-                  />
+                  <img src={images[currentIndex]} alt={product.title} className="main-image" />
                   {images.length > 1 && (
                     <>
-                      <button className="img-arrow left" onClick={prevImage}>
-                        <FaArrowLeft />
-                      </button>
-                      <button className="img-arrow right" onClick={nextImage}>
-                        <FaArrowRight />
-                      </button>
+                      <button className="img-arrow left" onClick={prevImage}><FaArrowLeft /></button>
+                      <button className="img-arrow right" onClick={nextImage}><FaArrowRight /></button>
                     </>
                   )}
                 </div>
@@ -382,22 +364,12 @@ const ProductDetailPage = () => {
           <div className="product-info">
 
             <div className="auction-status-row">
-              {auction.status === "live" && (
-                <span className="live-badge">● Live</span>
-              )}
-              {auction.status === "ended" && (
-                <span className="ended-badge">● Ended</span>
-              )}
-              {auction.status === "paused" && (
-                <span className="paused-badge">⏸ Paused</span>
-              )}
-              <span className="category-badge">
-                <FaTag /> {product.category}
-              </span>
+              {auction.status === "live"   && <span className="live-badge">● Live</span>}
+              {auction.status === "ended"  && <span className="ended-badge">● Ended</span>}
+              {auction.status === "paused" && <span className="paused-badge">⏸ Paused</span>}
+              <span className="category-badge"><FaTag /> {product.category}</span>
               {product.condition && (
-                <span className="condition-badge">
-                  <FaBoxOpen /> {product.condition}
-                </span>
+                <span className="condition-badge"><FaBoxOpen /> {product.condition}</span>
               )}
             </div>
 
@@ -405,8 +377,7 @@ const ProductDetailPage = () => {
 
             <div className="seller-row">
               <div className="seller-avatar">
-                {(seller?.profiles?.name || seller?.business_name || "S")
-                  .charAt(0).toUpperCase()}
+                {(seller?.profiles?.name || seller?.business_name || "S").charAt(0).toUpperCase()}
               </div>
               <div>
                 <span className="seller-label">Sold by</span>
@@ -428,12 +399,9 @@ const ProductDetailPage = () => {
                   <FaGavel /> {bids.length} bid{bids.length !== 1 ? "s" : ""} placed
                 </p>
               </div>
-
               {auction.status === "live" && (
                 <div className="bid-box-right">
-                  <p className="label">
-                    <FaClock /> Time Remaining
-                  </p>
+                  <p className="label"><FaClock /> Time Remaining</p>
                   <CountdownTimer timeLeft={timeLeft} />
                 </div>
               )}
@@ -491,8 +459,7 @@ const ProductDetailPage = () => {
                       <div>
                         <h3 style={{ margin: 0 }}>Auction Ended</h3>
                         <p style={{ margin: "4px 0 0", color: "#555" }}>
-                          Final Price:{" "}
-                          <strong>PKR {auction.highest_bid?.toLocaleString()}</strong>
+                          Final Price: <strong>PKR {auction.highest_bid?.toLocaleString()}</strong>
                         </p>
                         <p style={{ margin: "2px 0 0", color: "#888", fontSize: "13px" }}>
                           Total Bids: {bids.length}
@@ -500,22 +467,15 @@ const ProductDetailPage = () => {
                       </div>
                     </div>
 
-                    {/* Winner's Pay Now section */}
                     {isWinner && (
                       <div className="winner-checkout-box">
-                        <p className="winner-msg">
-                          🎉 Congratulations! You won this auction.
-                        </p>
+                        <p className="winner-msg">🎉 Congratulations! You won this auction.</p>
                         {alreadyPaid ? (
                           <div style={{
-                            marginTop: "10px",
-                            padding: "12px 16px",
-                            background: "#ecfdf5",
-                            border: "1px solid #10b981",
-                            borderRadius: "8px",
-                            color: "#065f46",
-                            fontSize: "14px",
-                            fontWeight: "600",
+                            marginTop: "10px", padding: "12px 16px",
+                            background: "#ecfdf5", border: "1px solid #10b981",
+                            borderRadius: "8px", color: "#065f46",
+                            fontSize: "14px", fontWeight: "600",
                           }}>
                             ✅ Payment completed. Your order has been placed.
                           </div>
@@ -532,14 +492,11 @@ const ProductDetailPage = () => {
                       </div>
                     )}
 
-                    {/* Non-winner message */}
                     {user && !isWinner && profile?.role === "buyer" && (
                       <p style={{ color: "#888", fontSize: "13px", marginTop: "12px" }}>
                         This auction has ended. Better luck next time!
                       </p>
                     )}
-
-                    {/* Not logged in */}
                     {!user && (
                       <p style={{ color: "#888", fontSize: "13px", marginTop: "12px" }}>
                         This auction has ended.
@@ -549,9 +506,7 @@ const ProductDetailPage = () => {
                 ) : (
                   <div>
                     <h3>Auction Ended</h3>
-                    <p style={{ color: "#888" }}>
-                      This auction ended with no bids placed.
-                    </p>
+                    <p style={{ color: "#888" }}>This auction ended with no bids placed.</p>
                   </div>
                 )}
               </div>
@@ -621,10 +576,7 @@ const ProductDetailPage = () => {
                 const name = bid.buyers?.profiles?.name || "Anonymous";
                 const isHighest = i === 0;
                 return (
-                  <div
-                    className={`bid-item ${isHighest ? "top-bid" : ""}`}
-                    key={bid.id}
-                  >
+                  <div className={`bid-item ${isHighest ? "top-bid" : ""}`} key={bid.id}>
                     <div className="bid-user">
                       <div
                         className="avatar"
