@@ -12,7 +12,7 @@ import ProductCard from "../components/ProductCard";
 import banner from "../../assets/banner.jpg";
 import "../styles/homepage.css";
 
-// Normalize Supabase auction to ProductCard-compatible shape
+// ── Normalize Supabase auction to ProductCard shape ────────────────
 const normalizeAuction = (auction, bidCounts) => {
   const product = auction.products;
   const primaryImg =
@@ -20,68 +20,48 @@ const normalizeAuction = (auction, bidCounts) => {
     product?.product_images?.[0];
 
   return {
-    id: auction.id,
-    auctionId: auction.id,
-    title: product?.title || "—",
+    id:             auction.id,
+    auctionId:      auction.id,
+    title:          product?.title || "—",
     seller:
       auction.sellers?.profiles?.name ||
-      auction.sellers?.business_name ||
+      auction.sellers?.business_name  ||
       "—",
-    image: primaryImg?.image_url || null,
+    image:          primaryImg?.image_url || null,
     product_images: product?.product_images || [],
-    currentBid: auction.highest_bid || 0,
-    highest_bid: auction.highest_bid || 0,
-    totalBids: bidCounts[auction.id] || 0,
-    bids_count: bidCounts[auction.id] || 0,
-    endTime: auction.end_time,
-    end_time: auction.end_time,
-    category: product?.category,
-    sellers: auction.sellers,
+    currentBid:     auction.highest_bid || 0,
+    highest_bid:    auction.highest_bid || 0,
+    totalBids:      bidCounts[auction.id] || 0,
+    bids_count:     bidCounts[auction.id] || 0,
+    endTime:        auction.end_time,
+    end_time:       auction.end_time,
+    category:       product?.category,
+    sellers:        auction.sellers,
   };
 };
 
 const HomePage = () => {
-  const navigate = useNavigate();
-  const featuredRef = useRef();
-  const latestRef = useRef();
+  const navigate     = useNavigate();
+  const featuredRef  = useRef();
+  const latestRef    = useRef();
 
   const [popularAuctions, setPopularAuctions] = useState([]);
-  const [latestAuctions, setLatestAuctions] = useState([]);
-  const [loadingAuctions, setLoadingAuctions] = useState(true);
+  const [latestAuctions,  setLatestAuctions]  = useState([]);
 
-  useEffect(() => {
-    fetchAuctions();
-  }, []);
+  // FIX: Separate initial loading from background refresh
+  // initialLoading = true only on first load (shows skeleton/spinner)
+  // refreshing     = true on realtime updates (silent background refresh, no flicker)
+  const [initialLoading, setInitialLoading] = useState(true);
 
-  // ── Realtime subscription — refresh when any auction bid updates ──
-  useEffect(() => {
-    const channel = supabase
-      .channel("home-auctions-realtime")
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "auctions" },
-        () => {
-          // Re-fetch so cards show updated highest_bid
-          fetchAuctions();
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "bids" },
-        () => {
-          // Re-fetch bid counts when new bid placed
-          fetchAuctions();
-        }
-      )
-      .subscribe();
-
-    return () => supabase.removeChannel(channel);
-  }, []);
-
-  const fetchAuctions = async () => {
+  // ── Fetch auctions ─────────────────────────────────────────────
+  // FIX: isInitial flag controls whether to show loading spinner
+  // On realtime updates we pass isInitial=false so cards stay visible
+  const fetchAuctions = async (isInitial = false) => {
     try {
-      setLoadingAuctions(true);
+      if (isInitial) setInitialLoading(true);
 
+      // FIX: Single query — fetch auctions WITH bids count in one call
+      // Supabase supports count() on related tables via select string
       const { data, error } = await supabase
         .from("auctions")
         .select(`
@@ -99,7 +79,8 @@ const HomePage = () => {
           sellers (
             business_name,
             profiles ( name )
-          )
+          ),
+          bids ( id )
         `)
         .eq("status", "live")
         .eq("approval_status", "approved")
@@ -107,31 +88,23 @@ const HomePage = () => {
 
       if (error) { console.error(error); return; }
 
-      // Bid counts
-      const auctionIds = (data || []).map((a) => a.id);
+      // Build bid counts from the joined bids array
+      // bids is returned as an array so we just count the length
       const bidCounts = {};
-
-      if (auctionIds.length > 0) {
-        const { data: bidsData } = await supabase
-          .from("bids")
-          .select("auction_id")
-          .in("auction_id", auctionIds);
-
-        (bidsData || []).forEach((b) => {
-          bidCounts[b.auction_id] = (bidCounts[b.auction_id] || 0) + 1;
-        });
-      }
+      (data || []).forEach((a) => {
+        bidCounts[a.id] = a.bids?.length || 0;
+      });
 
       const normalized = (data || []).map((a) =>
         normalizeAuction(a, bidCounts)
       );
 
-      // Popular = most bids
+      // Popular = most bids first
       const popular = [...normalized]
         .sort((a, b) => b.totalBids - a.totalBids)
         .slice(0, 10);
 
-      // Latest = ending soonest
+      // Ending soon = soonest end_time first
       const latest = [...normalized]
         .sort((a, b) => new Date(a.end_time) - new Date(b.end_time))
         .slice(0, 10);
@@ -142,16 +115,42 @@ const HomePage = () => {
     } catch (err) {
       console.error(err);
     } finally {
-      setLoadingAuctions(false);
+      if (isInitial) setInitialLoading(false);
     }
   };
 
-  // Auto scroll
+  // Initial fetch — show spinner
+  useEffect(() => {
+    fetchAuctions(true);
+  }, []);
+
+  // ── Realtime subscription ──────────────────────────────────────
+  // FIX: Pass isInitial=false so realtime updates happen silently
+  // Cards stay visible and just update their values — no flicker
+  useEffect(() => {
+    const channel = supabase
+      .channel("home-auctions-realtime")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "auctions" },
+        () => fetchAuctions(false) // silent refresh — no loading spinner
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "bids" },
+        () => fetchAuctions(false) // silent refresh — no loading spinner
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, []);
+
+  // ── Auto scroll ────────────────────────────────────────────────
   useEffect(() => {
     if (popularAuctions.length === 0) return;
 
     const featuredSlider = featuredRef.current;
-    const latestSlider = latestRef.current;
+    const latestSlider   = latestRef.current;
 
     const interval = setInterval(() => {
       if (featuredSlider) {
@@ -233,7 +232,7 @@ const HomePage = () => {
       <section className="popular auction-section">
         <h2 className="auction-heading">Popular Auctions</h2>
 
-        {loadingAuctions ? (
+        {initialLoading ? (
           <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>
             Loading auctions...
           </div>
@@ -274,11 +273,11 @@ const HomePage = () => {
         )}
       </section>
 
-      {/* Latest Auctions (ending soonest) */}
+      {/* Ending Soon */}
       <section className="latest auction-section">
         <h2 className="auction-heading">Ending Soon</h2>
 
-        {loadingAuctions ? (
+        {initialLoading ? (
           <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>
             Loading auctions...
           </div>

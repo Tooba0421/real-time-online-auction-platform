@@ -8,30 +8,30 @@ import ProductCard from "../components/ProductCard";
 import "../styles/common.css";
 import "../styles/auctionsPage.css";
 
-const normalizeAuction = (auction, bidCounts) => {
+const normalizeAuction = (auction) => {
   const product = auction.products;
   const primaryImg =
     product?.product_images?.find((img) => img.is_primary) ||
     product?.product_images?.[0];
 
   return {
-    id: auction.id,
-    auctionId: auction.id,
-    title: product?.title || "—",
+    id:             auction.id,
+    auctionId:      auction.id,
+    title:          product?.title || "—",
     seller:
       auction.sellers?.profiles?.name ||
-      auction.sellers?.business_name ||
+      auction.sellers?.business_name  ||
       "—",
-    image: primaryImg?.image_url || null,
+    image:          primaryImg?.image_url || null,
     product_images: product?.product_images || [],
-    currentBid: auction.highest_bid || 0,
-    highest_bid: auction.highest_bid || 0,
-    totalBids: bidCounts[auction.id] || 0,
-    bids_count: bidCounts[auction.id] || 0,
-    endTime: auction.end_time,
-    end_time: auction.end_time,
-    category: product?.category,
-    sellers: auction.sellers,
+    currentBid:     auction.highest_bid || 0,
+    highest_bid:    auction.highest_bid || 0,
+    totalBids:      auction.bids?.length || 0,
+    bids_count:     auction.bids?.length || 0,
+    endTime:        auction.end_time,
+    end_time:       auction.end_time,
+    category:       product?.category,
+    sellers:        auction.sellers,
   };
 };
 
@@ -40,7 +40,7 @@ const AuctionsPage = () => {
   const location = useLocation();
 
   const [auctions, setAuctions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   useLayoutEffect(() => {
     window.scrollTo({ top: 0, left: 0 });
@@ -53,14 +53,12 @@ const AuctionsPage = () => {
   if (type === "popular") pageTitle = "Popular Auctions";
   else if (type === "latest") pageTitle = "Latest Auctions";
 
-  useEffect(() => {
-    fetchAuctions();
-  }, [type]);
-
-  const fetchAuctions = async () => {
+  // ── Fetch — isInitial controls whether spinner shows ──────────
+  const fetchAuctions = async (isInitial = false) => {
     try {
-      setLoading(true);
+      if (isInitial) setInitialLoading(true);
 
+      // Single query — bids joined so no second round-trip needed
       const { data, error } = await supabase
         .from("auctions")
         .select(`
@@ -78,47 +76,61 @@ const AuctionsPage = () => {
           sellers (
             business_name,
             profiles ( name )
-          )
+          ),
+          bids ( id )
         `)
         .eq("status", "live")
         .eq("approval_status", "approved");
 
       if (error) { console.error(error); return; }
 
-      const auctionIds = (data || []).map((a) => a.id);
-      const bidCounts = {};
+      let normalized = (data || []).map((a) => normalizeAuction(a));
 
-      if (auctionIds.length > 0) {
-        const { data: bidsData } = await supabase
-          .from("bids")
-          .select("auction_id")
-          .in("auction_id", auctionIds);
-
-        (bidsData || []).forEach((b) => {
-          bidCounts[b.auction_id] = (bidCounts[b.auction_id] || 0) + 1;
-        });
-      }
-
-      let normalized = (data || []).map((a) =>
-        normalizeAuction(a, bidCounts)
-      );
-
+      // Sort based on page type
       if (type === "popular") {
+        // Most bids first
         normalized = normalized.sort((a, b) => b.totalBids - a.totalBids);
       } else if (type === "latest") {
+        // Most recently created first
         normalized = normalized.sort(
-          (a, b) => new Date(b.end_time) - new Date(a.end_time)
+          (a, b) => new Date(b.created_at) - new Date(a.created_at)
         );
       }
+      // type === null → All Auctions — no sort, DB order
 
       setAuctions(normalized);
 
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (isInitial) setInitialLoading(false);
     }
   };
+
+  // Initial fetch on mount and whenever type changes
+  useEffect(() => {
+    fetchAuctions(true);
+  }, [type]);
+
+  // ── Realtime subscription ─────────────────────────────────────
+  // Silent refresh — no spinner, cards stay visible and update values
+  useEffect(() => {
+    const channel = supabase
+      .channel("auctions-page-realtime")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "auctions" },
+        () => fetchAuctions(false)
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "bids" },
+        () => fetchAuctions(false)
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, [type]); // re-subscribe when type changes so fetchAuctions closure is current
 
   return (
     <>
@@ -138,7 +150,7 @@ const AuctionsPage = () => {
           <h2 className="page-heading">{pageTitle}</h2>
         </div>
 
-        {loading ? (
+        {initialLoading ? (
           <div style={{ textAlign: "center", padding: "60px", color: "#999" }}>
             Loading auctions...
           </div>
