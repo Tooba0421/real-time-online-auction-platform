@@ -8,30 +8,31 @@ import ProductCard from "../components/ProductCard";
 import "../styles/common.css";
 import "../styles/categoryPage.css";
 
-const normalizeAuction = (auction, bidCounts) => {
+// ── Normalize — reads bids?.length directly, no second query needed ──
+const normalizeAuction = (auction) => {
   const product = auction.products;
   const primaryImg =
     product?.product_images?.find((img) => img.is_primary) ||
     product?.product_images?.[0];
 
   return {
-    id: auction.id,
-    auctionId: auction.id,
-    title: product?.title || "—",
+    id:             auction.id,
+    auctionId:      auction.id,
+    title:          product?.title || "—",
     seller:
       auction.sellers?.profiles?.name ||
-      auction.sellers?.business_name ||
+      auction.sellers?.business_name  ||
       "—",
-    image: primaryImg?.image_url || null,
+    image:          primaryImg?.image_url || null,
     product_images: product?.product_images || [],
-    currentBid: auction.highest_bid || 0,
-    highest_bid: auction.highest_bid || 0,
-    totalBids: bidCounts[auction.id] || 0,
-    bids_count: bidCounts[auction.id] || 0,
-    endTime: auction.end_time,
-    end_time: auction.end_time,
-    category: product?.category,
-    sellers: auction.sellers,
+    currentBid:     auction.highest_bid || 0,
+    highest_bid:    auction.highest_bid || 0,
+    totalBids:      auction.bids?.length || 0,
+    bids_count:     auction.bids?.length || 0,
+    endTime:        auction.end_time,
+    end_time:       auction.end_time,
+    category:       product?.category,
+    sellers:        auction.sellers,
   };
 };
 
@@ -39,25 +40,30 @@ const SearchPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [auctions, setAuctions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const queryParams  = new URLSearchParams(location.search);
+  const searchQuery  = queryParams.get("q") || "";
+
+  const [auctions, setAuctions]             = useState([]);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   useLayoutEffect(() => {
     window.scrollTo({ top: 0, left: 0 });
   }, []);
 
-  const queryParams = new URLSearchParams(location.search);
-  const searchQuery = queryParams.get("q") || "";
-
   useEffect(() => {
-    if (searchQuery.trim()) fetchSearchResults();
-    else { setAuctions([]); setLoading(false); }
+    if (searchQuery.trim()) {
+      fetchSearchResults();
+    } else {
+      setAuctions([]);
+      setInitialLoading(false);
+    }
   }, [searchQuery]);
 
   const fetchSearchResults = async () => {
     try {
-      setLoading(true);
+      setInitialLoading(true);
 
+      // ✅ Single query — bids joined so no second round-trip needed
       const { data, error } = await supabase
         .from("auctions")
         .select(`
@@ -76,50 +82,43 @@ const SearchPage = () => {
           sellers (
             business_name,
             profiles ( name )
-          )
+          ),
+          bids ( id )
         `)
         .eq("status", "live")
         .eq("approval_status", "approved");
 
       if (error) { console.error(error); return; }
 
+      // ✅ Client-side text search across title, category,
+      // description, seller name — any word match counts
       const query = searchQuery.trim().toLowerCase();
       const words = query.split(" ").filter(Boolean);
 
       const filtered = (data || []).filter((a) => {
         const text = [
-          a.products?.title || "",
-          a.products?.category || "",
-          a.products?.description || "",
+          a.products?.title        || "",
+          a.products?.category     || "",
+          a.products?.description  || "",
           a.sellers?.profiles?.name || "",
-          a.sellers?.business_name || "",
+          a.sellers?.business_name  || "",
         ].join(" ").toLowerCase();
 
         return words.some((word) => text.includes(word));
       });
 
-      const auctionIds = filtered.map((a) => a.id);
-      const bidCounts = {};
-
-      if (auctionIds.length > 0) {
-        const { data: bidsData } = await supabase
-          .from("bids")
-          .select("auction_id")
-          .in("auction_id", auctionIds);
-
-        (bidsData || []).forEach((b) => {
-          bidCounts[b.auction_id] = (bidCounts[b.auction_id] || 0) + 1;
-        });
-      }
-
-      setAuctions(filtered.map((a) => normalizeAuction(a, bidCounts)));
+      setAuctions(filtered.map((a) => normalizeAuction(a)));
 
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
     }
   };
+
+  // ✅ No realtime subscription needed for search —
+  // results are point-in-time based on the user's query.
+  // Re-fetching on every bid would reset the result set unexpectedly.
 
   return (
     <>
@@ -135,14 +134,16 @@ const SearchPage = () => {
           </h2>
         </div>
 
-        {loading ? (
+        {initialLoading ? (
           <div style={{ textAlign: "center", padding: "60px", color: "#999" }}>
             Searching...
           </div>
         ) : auctions.length === 0 ? (
           <div style={{ textAlign: "center", marginTop: "60px" }}>
             <h3>No results found</h3>
-            <p>Try searching something else</p>
+            <p style={{ color: "#999", marginTop: "8px" }}>
+              Try searching with a different keyword.
+            </p>
           </div>
         ) : (
           <div className="category-grid">

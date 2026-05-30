@@ -1,22 +1,50 @@
-import { Navigate } from 'react-router-dom'
-import { useAuthContext } from '../context/AuthContext'
+import { Navigate } from "react-router-dom";
+import { useAuthContext } from "./../context/AuthContext";
 
-const ProtectedRoute = ({ children, allowedRole }) => {
-  const { user, profile, loading } = useAuthContext()
+// ── ProtectedRoute ─────────────────────────────────────────────────
+// Props:
+//   children     — the page component to render if check passes
+//   requiredRole — optional. If provided, user must have this role.
+//                  If not provided, just checks if user is logged in.
+//   redirectTo   — where to send the user if check fails (default "/")
 
-  // Still fetching user data → show nothing yet
-  if (loading) return <div>Loading...</div>
+const ProtectedRoute = ({
+  children,
+  requiredRole = null,
+  redirectTo = "/",
+}) => {
+  const { user, profile, loading } = useAuthContext();
 
-  // Not logged in → redirect to home
-  if (!user) return <Navigate to="/" />
-
-  // Role check → if allowedRole is provided
-  if (allowedRole && profile?.role !== allowedRole) {
-    return <Navigate to="/" />
+  // Wait for auth to finish loading before making any decision
+  // Without this, it would redirect logged-in users on page refresh
+  // because user is null for a brief moment while session is restored
+  if (loading) {
+    return (
+      <div style={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        minHeight: "100vh",
+        fontSize: "16px",
+        color: "#999",
+      }}>
+        Loading...
+      </div>
+    );
   }
 
-  // All checks passed → show the page
-  return children
-}
+  // Not logged in — redirect to home
+  if (!user) {
+    return <Navigate to={redirectTo} replace />;
+  }
+
+  // Logged in but wrong role — redirect to home
+  if (requiredRole && profile?.role !== requiredRole) {
+    return <Navigate to={redirectTo} replace />;
+  }
+
+  // All checks passed — render the page
+  return children;
+};
 
 export default ProtectedRoute;

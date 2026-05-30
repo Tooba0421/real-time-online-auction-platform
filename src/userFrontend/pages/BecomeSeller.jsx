@@ -71,7 +71,7 @@ const BecomeSeller = () => {
 
   const getButtonLabel = () => {
     if (!user) return "Login to Get Started";
-    if (profile?.role === "seller") return "Already a Seller ✅";
+    if (profile?.role === "seller") return "Already a Seller";
     if (checking) return "Checking...";
     return "Get Started";
   };

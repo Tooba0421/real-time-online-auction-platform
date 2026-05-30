@@ -8,30 +8,31 @@ import ProductCard from "../components/ProductCard";
 import "../styles/categoryPage.css";
 import "../styles/common.css";
 
-const normalizeAuction = (auction, bidCounts) => {
+// ── Normalize — reads bids?.length directly, no second query needed ──
+const normalizeAuction = (auction) => {
   const product = auction.products;
   const primaryImg =
     product?.product_images?.find((img) => img.is_primary) ||
     product?.product_images?.[0];
 
   return {
-    id: auction.id,
-    auctionId: auction.id,
-    title: product?.title || "—",
+    id:             auction.id,
+    auctionId:      auction.id,
+    title:          product?.title || "—",
     seller:
       auction.sellers?.profiles?.name ||
-      auction.sellers?.business_name ||
+      auction.sellers?.business_name  ||
       "—",
-    image: primaryImg?.image_url || null,
+    image:          primaryImg?.image_url || null,
     product_images: product?.product_images || [],
-    currentBid: auction.highest_bid || 0,
-    highest_bid: auction.highest_bid || 0,
-    totalBids: bidCounts[auction.id] || 0,
-    bids_count: bidCounts[auction.id] || 0,
-    endTime: auction.end_time,
-    end_time: auction.end_time,
-    category: product?.category,
-    sellers: auction.sellers,
+    currentBid:     auction.highest_bid || 0,
+    highest_bid:    auction.highest_bid || 0,
+    totalBids:      auction.bids?.length || 0,
+    bids_count:     auction.bids?.length || 0,
+    endTime:        auction.end_time,
+    end_time:       auction.end_time,
+    category:       product?.category,
+    sellers:        auction.sellers,
   };
 };
 
@@ -41,20 +42,19 @@ const CategoryPage = () => {
   const decodedCategory = decodeURIComponent(category);
 
   const [auctions, setAuctions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   useLayoutEffect(() => {
     window.scrollTo({ top: 0, left: 0 });
   }, []);
 
-  useEffect(() => {
-    fetchCategoryAuctions();
-  }, [decodedCategory]);
-
-  const fetchCategoryAuctions = async () => {
+  // ── Fetch — isInitial controls whether spinner shows ──────────────
+  const fetchCategoryAuctions = async (isInitial = false) => {
     try {
-      setLoading(true);
+      if (isInitial) setInitialLoading(true);
 
+      // ✅ Single query — bids joined so no second round-trip needed
+      // ✅ Category filtered server-side via eq on joined products column
       const { data, error } = await supabase
         .from("auctions")
         .select(`
@@ -62,7 +62,7 @@ const CategoryPage = () => {
           highest_bid,
           end_time,
           created_at,
-          products (
+          products!inner (
             id,
             title,
             category,
@@ -72,42 +72,48 @@ const CategoryPage = () => {
           sellers (
             business_name,
             profiles ( name )
-          )
+          ),
+          bids ( id )
         `)
         .eq("status", "live")
-        .eq("approval_status", "approved");
+        .eq("approval_status", "approved")
+        .eq("products.category", decodedCategory);
 
       if (error) { console.error(error); return; }
 
-      // Filter by category client-side
-      const filtered = (data || []).filter(
-        (a) => a.products?.category === decodedCategory
-      );
-
-      const auctionIds = filtered.map((a) => a.id);
-      const bidCounts = {};
-
-      if (auctionIds.length > 0) {
-        const { data: bidsData } = await supabase
-          .from("bids")
-          .select("auction_id")
-          .in("auction_id", auctionIds);
-
-        (bidsData || []).forEach((b) => {
-          bidCounts[b.auction_id] = (bidCounts[b.auction_id] || 0) + 1;
-        });
-      }
-
-      setAuctions(
-        filtered.map((a) => normalizeAuction(a, bidCounts))
-      );
+      setAuctions((data || []).map((a) => normalizeAuction(a)));
 
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (isInitial) setInitialLoading(false);
     }
   };
+
+  // Initial fetch when category changes
+  useEffect(() => {
+    fetchCategoryAuctions(true);
+  }, [decodedCategory]);
+
+  // ── Realtime subscription ─────────────────────────────────────────
+  // Silent refresh — cards stay visible and update values without flicker
+  useEffect(() => {
+    const channel = supabase
+      .channel(`category-page-${decodedCategory}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "auctions" },
+        () => fetchCategoryAuctions(false)
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "bids" },
+        () => fetchCategoryAuctions(false)
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, [decodedCategory]); // re-subscribe when category changes
 
   return (
     <>
@@ -122,7 +128,7 @@ const CategoryPage = () => {
             <h2 className="page-heading">{decodedCategory} Auctions</h2>
           </div>
 
-          {loading ? (
+          {initialLoading ? (
             <div style={{ textAlign: "center", padding: "60px", color: "#999" }}>
               Loading auctions...
             </div>

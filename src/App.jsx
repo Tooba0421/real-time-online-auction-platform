@@ -5,6 +5,7 @@ import { Toaster } from 'react-hot-toast'
 import AdminPortal from "./admin/AdminPortal";
 import SellerPortal from "./seller/SellerPortal";
 import UserPortal from "./userFrontend/UserPortal";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 const AppRoutes = () => {
   const navigate = useNavigate();
@@ -17,8 +18,24 @@ const AppRoutes = () => {
   return (
     <Routes>
       <Route path="/*" element={<UserPortal />} />
-      <Route path="/admin/*" element={<AdminPortal />} />
-      <Route path="/seller/*" element={<SellerPortal />} />
+
+      <Route
+        path="/admin/*"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <AdminPortal />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/seller/*"
+        element={
+          <ProtectedRoute requiredRole="seller">
+            <SellerPortal />
+          </ProtectedRoute>
+        }
+      />
     </Routes>
   );
 };
