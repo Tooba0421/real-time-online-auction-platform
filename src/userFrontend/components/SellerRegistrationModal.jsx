@@ -50,7 +50,6 @@ const SellerRegistrationModal = ({ closeModal }) => {
           }
         }
       } catch (err) {
-        console.error(err);
       } finally {
         setCheckingStatus(false);
       }
@@ -102,7 +101,6 @@ const SellerRegistrationModal = ({ closeModal }) => {
 
       if (frontError) {
         toast.error("Error uploading CNIC front image");
-        console.error(frontError);
         return;
       }
 
@@ -114,7 +112,6 @@ const SellerRegistrationModal = ({ closeModal }) => {
 
       if (backError) {
         toast.error("Error uploading CNIC back image");
-        console.error(backError);
         return;
       }
 
@@ -141,7 +138,6 @@ const SellerRegistrationModal = ({ closeModal }) => {
 
         if (updateError) {
           toast.error("Error resubmitting seller form");
-          console.error(updateError);
           return;
         }
       } else {
@@ -152,7 +148,6 @@ const SellerRegistrationModal = ({ closeModal }) => {
 
         if (insertError) {
           toast.error("Error submitting seller form");
-          console.error(insertError);
           return;
         }
       }
@@ -181,7 +176,6 @@ const SellerRegistrationModal = ({ closeModal }) => {
       closeModal();
 
     } catch (err) {
-      console.error(err);
       toast.error("Something went wrong. Please try again.");
     } finally {
       setLoading(false);

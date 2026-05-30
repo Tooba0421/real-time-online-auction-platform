@@ -9,6 +9,7 @@ import { supabase } from "../../supabase/supabase";
 import { logout } from "../../supabase/authService";
 import { useAuthContext } from "../../context/AuthContext";
 import CnicModal from "../components/CnicModal";
+import toast from "react-hot-toast";
 import "../styles/profile.css";
 
 const ProfilePage = () => {
@@ -53,7 +54,7 @@ const ProfilePage = () => {
         supabase.storage.from("cnic-images").createSignedUrl(`buyers/${user.id}/back`,  3600),
       ]);
       setBuyerCnicUrls({ front: f?.signedUrl || null, back: b?.signedUrl || null });
-    } catch (err) { console.error(err); }
+    } catch (err) { }
   }, [user]);
 
   const fetchSellerCnicUrls = useCallback(async () => {
@@ -64,7 +65,7 @@ const ProfilePage = () => {
         supabase.storage.from("cnic-images").createSignedUrl(`sellers/${user.id}/back`,  3600),
       ]);
       setSellerCnicUrls({ front: f?.signedUrl || null, back: b?.signedUrl || null });
-    } catch (err) { console.error(err); }
+    } catch (err) { }
   }, [user]);
 
   // ── Main data fetch ───────────────────────────────────────────────
@@ -99,7 +100,6 @@ const ProfilePage = () => {
       ]);
 
     } catch (err) {
-      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -211,7 +211,6 @@ const ProfilePage = () => {
       await refreshProfile();
       setShowPersonalEdit(false);
     } catch (err) {
-      console.error(err);
     } finally {
       setSaving(false);
     }
@@ -243,7 +242,7 @@ const ProfilePage = () => {
       setShowSellerBasicEdit(false);
       alert("Name and business name updated successfully.");
     } catch (err) {
-      console.error(err); alert("Something went wrong");
+      toast.error("Something went wrong");
     } finally {
       setSaving(false);
     }
@@ -340,7 +339,7 @@ const ProfilePage = () => {
       setShowSellerApprovalEdit(false);
       fetchAllData(); // refresh pending change status
     } catch (err) {
-      console.error(err); alert("Something went wrong");
+      toast.error("Something went wrong");
     } finally {
       setSaving(false);
     }
@@ -428,7 +427,7 @@ const ProfilePage = () => {
       setShowCnicEdit(false);
       fetchAllData();
     } catch (err) {
-      console.error(err); alert("Something went wrong");
+      toast.error("Something went wrong");
     } finally {
       setSaving(false);
     }

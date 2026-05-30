@@ -39,7 +39,6 @@ const OTPVerificationModal = ({ email, closeModal, onVerified }) => {
       await onVerified(); // ensure async safety
 
     } catch (err) {
-      console.error(err);
       toast.error("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
@@ -69,7 +68,6 @@ const OTPVerificationModal = ({ email, closeModal, onVerified }) => {
       setOtp(""); // 🔥 clear input on resend
 
     } catch (err) {
-      console.error(err);
       toast.error("Something went wrong.");
     } finally {
       setResending(false);

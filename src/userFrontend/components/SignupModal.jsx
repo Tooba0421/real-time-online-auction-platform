@@ -51,7 +51,6 @@ const SignupModal = ({ closeModal, openLogin }) => {
       setShowOTP(true);
 
     } catch (error) {
-      console.error(error);
       toast.error("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
@@ -87,7 +86,6 @@ const SignupModal = ({ closeModal, openLogin }) => {
       closeModal();
 
     } catch (err) {
-      console.error(err);
       sessionStorage.removeItem("pending_signup");
       toast.error("Something went wrong. Please try again.");
     }

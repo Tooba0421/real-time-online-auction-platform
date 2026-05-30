@@ -62,7 +62,6 @@ const BecomeSeller = () => {
       setOpenSellerForm(true);
 
     } catch (err) {
-      console.error(err);
       toast.error("Something went wrong. Please try again.");
     } finally {
       setChecking(false);

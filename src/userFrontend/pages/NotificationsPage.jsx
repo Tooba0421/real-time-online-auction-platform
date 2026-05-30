@@ -100,7 +100,7 @@ const NotificationsPage = () => {
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
-      if (error) { console.error(error); return; }
+      if (error) { return; }
 
       setNotifications(data || []);
 
@@ -115,7 +115,6 @@ const NotificationsPage = () => {
         setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
       }
     } catch (err) {
-      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -157,7 +156,6 @@ const NotificationsPage = () => {
         navigate(destination);
       }
     } catch (err) {
-      console.error(err);
     } finally {
       setNavigating(null);
     }

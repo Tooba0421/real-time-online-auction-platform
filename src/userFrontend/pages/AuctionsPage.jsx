@@ -82,7 +82,7 @@ const AuctionsPage = () => {
         .eq("status", "live")
         .eq("approval_status", "approved");
 
-      if (error) { console.error(error); return; }
+      if (error) { return; }
 
       let normalized = (data || []).map((a) => normalizeAuction(a));
 
@@ -101,7 +101,6 @@ const AuctionsPage = () => {
       setAuctions(normalized);
 
     } catch (err) {
-      console.error(err);
     } finally {
       if (isInitial) setInitialLoading(false);
     }

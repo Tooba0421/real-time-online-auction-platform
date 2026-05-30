@@ -88,7 +88,7 @@ const SearchPage = () => {
         .eq("status", "live")
         .eq("approval_status", "approved");
 
-      if (error) { console.error(error); return; }
+      if (error) { return; }
 
       // ✅ Client-side text search across title, category,
       // description, seller name — any word match counts
@@ -110,7 +110,7 @@ const SearchPage = () => {
       setAuctions(filtered.map((a) => normalizeAuction(a)));
 
     } catch (err) {
-      console.error(err);
+      // Do nothing
     } finally {
       setInitialLoading(false);
     }

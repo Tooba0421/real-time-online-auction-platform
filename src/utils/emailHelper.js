@@ -21,11 +21,9 @@ export const sendOTPEmail = async (toEmail, toName, otpCode) => {
             PUBLIC_KEY
         );
 
-        console.log('Email sent successfully:', response);
         return { success: true };
 
     } catch (error) {
-        console.error('Email sending failed:', error);
         return { success: false, message: error.message };
     }
 };

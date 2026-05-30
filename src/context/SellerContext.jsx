@@ -102,7 +102,7 @@ export const SellerProvider = ({ children }) => {
         .eq("seller_id", id)
         .order("created_at", { ascending: false });
 
-      if (error) { console.error("fetchAuctions:", error); return; }
+      if (error) { return; }
 
       // Enrich with rejection reasons, winner names, order info in parallel
       const productIds = data?.map((a) => a.products?.id).filter(Boolean) || [];

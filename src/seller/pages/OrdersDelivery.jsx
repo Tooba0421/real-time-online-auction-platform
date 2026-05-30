@@ -97,7 +97,6 @@ const OrdersDelivery = () => {
       setTrackingNo("");
 
     } catch (err) {
-      console.error(err);
       toast.error("Something went wrong");
     } finally {
       setSubmitting(false);
@@ -145,7 +144,6 @@ const OrdersDelivery = () => {
       toast.success("Status updated to In Transit");
 
     } catch (err) {
-      console.error(err);
       toast.error("Something went wrong");
       // Rollback — refetch for accuracy
       refetchOrders();

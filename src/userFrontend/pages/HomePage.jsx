@@ -86,7 +86,7 @@ const HomePage = () => {
         .eq("approval_status", "approved")
         .limit(20);
 
-      if (error) { console.error(error); return; }
+      if (error) { return; }
 
       // Build bid counts from the joined bids array
       // bids is returned as an array so we just count the length
@@ -113,7 +113,6 @@ const HomePage = () => {
       setLatestAuctions(latest);
 
     } catch (err) {
-      console.error(err);
     } finally {
       if (isInitial) setInitialLoading(false);
     }

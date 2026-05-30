@@ -65,7 +65,6 @@ const BidderManagement = () => {
       ]);
       setCnicUrls({ front: front?.signedUrl || null, back: back?.signedUrl || null });
     } catch (err) {
-      console.error(err);
       toast.error("Could not load CNIC images");
     } finally {
       setCnicLoading(false);
@@ -92,7 +91,6 @@ const BidderManagement = () => {
         back:  backRes.data?.signedUrl  || null,
       });
     } catch (err) {
-      console.error(err);
     } finally {
       setEditCnicLoading(false);
     }

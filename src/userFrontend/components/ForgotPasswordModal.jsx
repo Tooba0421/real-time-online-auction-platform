@@ -26,7 +26,6 @@ const ForgotPasswordModal = ({ closeModal, openLogin }) => {
       setSent(true);
 
     } catch (error) {
-      console.error(error);
       toast.error("Something went wrong. Please try again.");
     } finally {
       setLoading(false);

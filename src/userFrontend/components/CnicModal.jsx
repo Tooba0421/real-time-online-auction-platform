@@ -43,7 +43,6 @@ const CnicModal = ({ closeModal }) => {
           // If approved — they are already a buyer, modal shouldn't open
         }
       } catch (err) {
-        console.error(err);
       } finally {
         setCheckingStatus(false);
       }
@@ -84,7 +83,6 @@ const CnicModal = ({ closeModal }) => {
 
       if (frontError) {
         toast.error("Error uploading front image");
-        console.error(frontError);
         return;
       }
 
@@ -95,7 +93,6 @@ const CnicModal = ({ closeModal }) => {
 
       if (backError) {
         toast.error("Error uploading back image");
-        console.error(backError);
         return;
       }
 
@@ -116,7 +113,6 @@ const CnicModal = ({ closeModal }) => {
 
         if (updateError) {
           toast.error("Error resubmitting CNIC");
-          console.error(updateError);
           return;
         }
       } else {
@@ -127,7 +123,6 @@ const CnicModal = ({ closeModal }) => {
 
         if (insertError) {
           toast.error("Error submitting CNIC");
-          console.error(insertError);
           return;
         }
       }
@@ -140,7 +135,6 @@ const CnicModal = ({ closeModal }) => {
 
       if (profileError) {
         toast.error("Error updating profile");
-        console.error(profileError);
         return;
       }
 
@@ -168,7 +162,6 @@ const CnicModal = ({ closeModal }) => {
       closeModal();
 
     } catch (err) {
-      console.error(err);
       toast.error("Error submitting CNIC. Please try again.");
     } finally {
       setLoading(false);

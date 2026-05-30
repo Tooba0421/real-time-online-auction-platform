@@ -79,12 +79,11 @@ const CategoryPage = () => {
         .eq("approval_status", "approved")
         .eq("products.category", decodedCategory);
 
-      if (error) { console.error(error); return; }
+      if (error) { return; }
 
       setAuctions((data || []).map((a) => normalizeAuction(a)));
 
     } catch (err) {
-      console.error(err);
     } finally {
       if (isInitial) setInitialLoading(false);
     }

@@ -210,7 +210,6 @@ const AuctionManagement = () => {
       refetchAuctions();
 
     } catch (err) {
-      console.error(err);
       toast.error("Something went wrong");
     } finally {
       setSaving(false);

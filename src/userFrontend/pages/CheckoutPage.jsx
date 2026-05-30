@@ -118,7 +118,6 @@ const PaymentForm = ({ auctionData, shippingForm, winningBid }) => {
 
       if (orderError) {
         toast.error("Error creating order. Please try again.");
-        console.error("Order error:", orderError);
         return;
       }
 
@@ -144,7 +143,6 @@ const PaymentForm = ({ auctionData, shippingForm, winningBid }) => {
 
       if (paymentError) {
         toast.error("Error recording payment. Please contact support.");
-        console.error("Payment error:", paymentError);
         return;
       }
 
@@ -165,7 +163,6 @@ const PaymentForm = ({ auctionData, shippingForm, winningBid }) => {
 
       if (txError) {
         // Non-critical — log but don't block the buyer flow
-        console.error("Transaction insert error (non-critical):", txError);
       }
 
       // ── Step 6: Set winner_id if not already set ──────────────────
@@ -203,7 +200,6 @@ const PaymentForm = ({ auctionData, shippingForm, winningBid }) => {
       navigate("/notifications");
 
     } catch (err) {
-      console.error("Payment error:", err);
       toast.error("Something went wrong. Please try again.");
     } finally {
       setProcessing(false);

@@ -32,7 +32,6 @@ const LoginModal = ({ closeModal, openSignup, openForgotPassword }) => {
       }
 
     } catch (error) {
-      console.error(error.message);
       toast.error(error.message);
     } finally {
       setLoading(false);

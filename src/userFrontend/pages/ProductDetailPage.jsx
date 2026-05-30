@@ -67,7 +67,6 @@ const useAuctionBySlug = (productSlug) => {
         );
         if (match) setAuctionId(match.id);
       } catch (err) {
-        console.error("Slug resolve error:", err);
       } finally {
         setSlugLoading(false);
       }
@@ -247,7 +246,6 @@ const ProductDetailPage = () => {
       toast.success(`Bid of PKR ${Number(bidAmount).toLocaleString()} placed successfully!`);
       setBidAmount("");
     } catch (err) {
-      console.error("Bid error:", err);
       toast.error("Failed to place bid. Please try again.");
     } finally {
       setBidding(false);

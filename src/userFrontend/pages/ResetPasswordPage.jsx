@@ -46,7 +46,6 @@ const ResetPasswordPage = () => {
         setStatus("invalid");
 
       } catch (err) {
-        console.error(err);
         setStatus("invalid");
       }
     };

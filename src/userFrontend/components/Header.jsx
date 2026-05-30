@@ -26,13 +26,14 @@ const Header = () => {
 
   const { user, profile, loading } = useAuthContext();
 
-  // Fetch unread count and subscribe to realtime
+  // ── Notification badge — fetch count + realtime subscription ──────
   useEffect(() => {
     if (!user) { setUnreadCount(0); return; }
 
     fetchUnreadCount();
 
-    const subscription = supabase
+    // ✅ FIXED: use supabase.removeChannel() not subscription.unsubscribe()
+    const channel = supabase
       .channel(`user-notifications-${user.id}`)
       .on("postgres_changes", {
         event: "*",
@@ -44,7 +45,7 @@ const Header = () => {
       })
       .subscribe();
 
-    return () => subscription.unsubscribe();
+    return () => supabase.removeChannel(channel); // ✅ FIXED
   }, [user]);
 
   const fetchUnreadCount = async () => {
@@ -57,17 +58,18 @@ const Header = () => {
     setUnreadCount(count || 0);
   };
 
+  // ── Close sidebar when clicking outside ───────────────────────────
   useEffect(() => {
-    const handleClickOutsideMenu = (e) => {
+    const handleClickOutside = (e) => {
       if (!e.target.closest(".navBar") && !e.target.closest(".menu-icon")) {
         setShowMenu(false);
       }
     };
     if (showMenu) {
-      document.addEventListener("mousedown", handleClickOutsideMenu);
+      document.addEventListener("mousedown", handleClickOutside);
     }
     return () => {
-      document.removeEventListener("mousedown", handleClickOutsideMenu);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [showMenu]);
 
@@ -77,14 +79,13 @@ const Header = () => {
     navigate(`/search?q=${searchQuery}`);
   };
 
-  const goToHome = () => navigate("/");
+  const goToHome       = () => navigate("/");
   const goToNotifications = () => navigate("/notifications");
-  const goToCategory = (category) =>
-    navigate(`/category/${encodeURIComponent(category)}`);
+  const goToCategory   = (cat) => navigate(`/category/${encodeURIComponent(cat)}`);
 
   const getAvatarLetter = () => {
     if (profile?.name) return profile.name.charAt(0).toUpperCase();
-    if (user?.email) return user.email.charAt(0).toUpperCase();
+    if (user?.email)   return user.email.charAt(0).toUpperCase();
     return null;
   };
 
@@ -120,7 +121,6 @@ const Header = () => {
         </form>
 
         <div className="header-actions">
-
           <div className="icons">
 
             {/* Favorites */}
@@ -163,7 +163,7 @@ const Header = () => {
               )}
             </div>
 
-            {/* Notification Bell with badge */}
+            {/* Notification Bell */}
             <div
               className="bell-wrapper"
               onClick={goToNotifications}
@@ -177,7 +177,7 @@ const Header = () => {
               )}
             </div>
 
-            {/* Avatar */}
+            {/* Profile Avatar */}
             {user && avatarLetter && (
               <div
                 className="profile-icon-avatar"
@@ -191,7 +191,7 @@ const Header = () => {
 
           </div>
 
-          {/* Login/Signup */}
+          {/* Login / Signup buttons */}
           {!loading && !user && (
             <>
               <button className="header-btn" onClick={() => setShowLogin(true)}>
@@ -202,16 +202,15 @@ const Header = () => {
               </button>
             </>
           )}
-
         </div>
       </header>
 
-      {/* OVERLAY */}
+      {/* Sidebar overlay */}
       {showMenu && (
         <div className="sidebar-overlay" onClick={() => setShowMenu(false)} />
       )}
 
-      {/* SIDEBAR */}
+      {/* Sidebar nav */}
       <nav className={`navBar ${showMenu ? "active" : ""}`}>
         <div className="user-sidebar-header">
           <p className="back-btn" onClick={() => setShowMenu(false)}>
@@ -219,7 +218,9 @@ const Header = () => {
           </p>
           <h3>Menu</h3>
         </div>
+
         <span onClick={() => { goToHome(); setShowMenu(false); }}>Home</span>
+
         <span className="dropdown-title">
           Category
           <div className="dropdown-category">
@@ -229,13 +230,14 @@ const Header = () => {
             <span onClick={() => goToCategory("Electronics")}>Electronics</span>
             <span onClick={() => goToCategory("Interiors")}>Interiors</span>
             <span onClick={() => goToCategory("Artwork")}>Artwork</span>
-            <span onClick={() => goToCategory("Music,Movies & Cameras")}>Music,Movies & Cameras</span>
+            <span onClick={() => goToCategory("Music,Movies & Cameras")}>Music, Movies & Cameras</span>
             <span onClick={() => goToCategory("Coins & Stamps")}>Coins & Stamps</span>
             <span onClick={() => goToCategory("Fashion")}>Fashion</span>
             <span onClick={() => goToCategory("Toys & Models")}>Toys & Models</span>
             <span onClick={() => goToCategory("Luxury Watches")}>Luxury Watches</span>
           </div>
         </span>
+
         <div className="mobile-category">
           <span
             className="dropdown-toggle"
@@ -251,7 +253,7 @@ const Header = () => {
               <span onClick={() => goToCategory("Electronics")}>Electronics</span>
               <span onClick={() => goToCategory("Interiors")}>Interiors</span>
               <span onClick={() => goToCategory("Artwork")}>Artwork</span>
-              <span onClick={() => goToCategory("Music,Movies & Cameras")}>Music,Movies & Cameras</span>
+              <span onClick={() => goToCategory("Music,Movies & Cameras")}>Music, Movies & Cameras</span>
               <span onClick={() => goToCategory("Coins & Stamps")}>Coins & Stamps</span>
               <span onClick={() => goToCategory("Fashion")}>Fashion</span>
               <span onClick={() => goToCategory("Toys & Models")}>Toys & Models</span>
@@ -259,25 +261,30 @@ const Header = () => {
             </div>
           )}
         </div>
-        <span onClick={() => { navigate("/auctions"); setShowMenu(false); }}>Auctions</span>
-        <span onClick={() => { navigate("/how-to-bid"); setShowMenu(false); }}>How to Bid</span>
+
+        <span onClick={() => { navigate("/auctions"); setShowMenu(false); }}>
+          Auctions
+        </span>
+
+        <span onClick={() => { navigate("/how-to-bid"); setShowMenu(false); }}>
+          How to Bid
+        </span>
+
+        {/* Dashboard buttons — sidebar only, shown based on role */}
         {!loading && profile?.role === "admin" && (
-          <span
-            onClick={() => { navigate("/admin"); setShowMenu(false); }}
-          >
+          <span onClick={() => { navigate("/admin"); setShowMenu(false); }}>
             Admin Dashboard
           </span>
         )}
         {!loading && profile?.role === "seller" && (
-          <span
-            onClick={() => { navigate("/seller"); setShowMenu(false); }}
-          >
+          <span onClick={() => { navigate("/seller"); setShowMenu(false); }}>
             Seller Dashboard
           </span>
         )}
+
       </nav>
 
-      {/* MODALS */}
+      {/* Modals */}
       {showLogin && (
         <LoginModal
           closeModal={() => setShowLogin(false)}
