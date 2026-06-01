@@ -15,16 +15,23 @@ export const useAuction = (auctionId) => {
     fetchAuction();
     fetchBids();
 
-    // setupRealtime returns a cleanup function
     const cleanup = setupRealtime();
 
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      cleanup(); // unsubscribe from channel
+      stopTimer();   // ✅ always clear timer on unmount
+      cleanup();
     };
   }, [auctionId]);
 
-  // ── Fetch full auction with all joined data ──────────────────
+  // ── Stop timer helper ─────────────────────────────────────────
+  const stopTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  // ── Fetch full auction ────────────────────────────────────────
   const fetchAuction = async () => {
     try {
       const { data, error } = await supabase
@@ -60,9 +67,18 @@ export const useAuction = (auctionId) => {
       if (error) throw error;
 
       setAuction(data);
-      startTimer(data.end_time);
+
+      // ✅ Only start timer if auction is live
+      if (data.status === "live") {
+        startTimer(data.end_time);
+      } else {
+        // Paused or ended — no timer needed
+        stopTimer();
+        setTimeLeft(null);
+      }
 
     } catch (err) {
+      console.error("fetchAuction error:", err);
     } finally {
       setLoading(false);
     }
@@ -89,13 +105,13 @@ export const useAuction = (auctionId) => {
       setBids(data || []);
 
     } catch (err) {
-      // Do nothing
+      console.error("fetchBids error:", err);
     }
   };
 
   // ── Countdown timer ───────────────────────────────────────────
   const startTimer = (endTime) => {
-    if (timerRef.current) clearInterval(timerRef.current);
+    stopTimer(); // clear any existing interval first
 
     const calculate = () => {
       const now  = new Date();
@@ -120,7 +136,7 @@ export const useAuction = (auctionId) => {
     const channel = supabase
       .channel(`auction-${auctionId}`)
 
-      // ── Auction row updated (pause, resume, end, highest_bid, auto-extend) ──
+      // ── Auction row updated (pause, resume, end, bid update, auto-extend) ──
       .on(
         "postgres_changes",
         {
@@ -130,29 +146,35 @@ export const useAuction = (auctionId) => {
           filter: `id=eq.${auctionId}`,
         },
         (payload) => {
-          // FIX: payload.new is a FLAT row — it has no joined data (products, sellers)
-          // Spreading it directly would wipe out products/sellers/product_images
-          // Instead: only update the flat columns, keep joined relations untouched
+          const newStatus  = payload.new.status;
+          const newEndTime = payload.new.end_time;
+
+          // Update auction state — keep joined relations (products/sellers)
+          // payload.new is flat so we only overwrite flat columns
           setAuction((prev) => {
             if (!prev) return prev;
             return {
-              ...prev,            // keep everything including joined products/sellers
-              // Only overwrite the flat auction columns that actually changed:
-              status:             payload.new.status,
-              highest_bid:        payload.new.highest_bid,
-              highest_bidder_id:  payload.new.highest_bidder_id,
-              winner_id:          payload.new.winner_id,
-              end_time:           payload.new.end_time,
-              paused_by:          payload.new.paused_by,
-              min_increment:      payload.new.min_increment,
-              auto_extend:        payload.new.auto_extend,
-              approval_status:    payload.new.approval_status,
+              ...prev,
+              status:            newStatus,
+              highest_bid:       payload.new.highest_bid,
+              highest_bidder_id: payload.new.highest_bidder_id,
+              winner_id:         payload.new.winner_id,
+              end_time:          newEndTime,
+              paused_by:         payload.new.paused_by,
+              min_increment:     payload.new.min_increment,
+              auto_extend:       payload.new.auto_extend,
+              approval_status:   payload.new.approval_status,
             };
           });
 
-          // Restart countdown if end_time changed (auto-extend feature)
-          if (payload.new.end_time) {
-            startTimer(payload.new.end_time);
+          // ✅ Timer logic based on new status:
+          if (newStatus === "live") {
+            // Live — start or restart timer (handles resume + auto-extend)
+            startTimer(newEndTime);
+          } else {
+            // Paused or ended — stop timer immediately and clear display
+            stopTimer();
+            setTimeLeft(null);
           }
         }
       )
@@ -167,7 +189,7 @@ export const useAuction = (auctionId) => {
           filter: `auction_id=eq.${auctionId}`,
         },
         async (payload) => {
-          // Fetch the new bid with buyer name (payload.new has no joined data)
+          // Fetch new bid with buyer name — payload.new has no joined data
           const { data } = await supabase
             .from("bids")
             .select(`
@@ -182,7 +204,6 @@ export const useAuction = (auctionId) => {
             .single();
 
           if (data) {
-            // Prepend new bid and keep max 20
             setBids((prev) => [data, ...prev].slice(0, 20));
           }
         }
@@ -190,7 +211,6 @@ export const useAuction = (auctionId) => {
 
       .subscribe();
 
-    // Return cleanup function
     return () => supabase.removeChannel(channel);
   };
 

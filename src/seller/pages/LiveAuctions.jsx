@@ -46,28 +46,48 @@ const LiveAuctions = () => {
   const handlePause = async (auction) => {
     try {
       setProcessing(auction.id);
-      // Optimistic update — UI changes instantly
+ 
+      // Optimistic update — show paused state immediately
       updateAuctionLocally(auction.id, { status: "paused", paused_by: "seller" });
+ 
+      // ✅ Also clear timer for this auction immediately in local state
+      // so it doesn't show the far-future end_time while DB write is in flight
+      setTimers((prev) => {
+        const updated = { ...prev };
+        delete updated[auction.id]; // remove timer — shows "—" for paused
+        return updated;
+      });
+ 
+      // pauseAuction now saves paused_time_remaining + sets end_time to 2099
       await pauseAuction(auction.id, auction.products?.title);
       toast.success("Auction paused");
     } catch (err) {
-      // Rollback on failure
+      // Rollback
       updateAuctionLocally(auction.id, { status: "live", paused_by: null });
       toast.error(err.message || "Failed to pause auction");
     } finally {
       setProcessing(null);
     }
   };
-
+ 
+  // ── Resume auction (seller) ───────────────────────────────────────
   const handleResume = async (auction) => {
     try {
       setProcessing(auction.id);
+ 
+      // Optimistic update
       updateAuctionLocally(auction.id, { status: "live", paused_by: null });
+ 
+      // resumeAuction recalculates end_time = now + paused_time_remaining
+      // The realtime subscription in SellerContext will fire and update
+      // the auction with the new correct end_time automatically
       await resumeAuction(auction.id, auction.paused_by);
       toast.success("Auction resumed");
     } catch (err) {
+      // Rollback
       updateAuctionLocally(auction.id, {
-        status: "paused", paused_by: auction.paused_by,
+        status:    "paused",
+        paused_by: auction.paused_by,
       });
       toast.error(err.message || "Failed to resume auction");
     } finally {

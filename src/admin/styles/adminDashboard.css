@@ -187,11 +187,11 @@ HEADER
 
 .notification-badge {
     position: absolute;
-    top: -0.35rem;
-    right: -0.35rem;
+    top: 1rem;
+    right: 5rem;
     background-color: #991B1B;
     color: white;
-    font-size: 0.6rem;
+    font-size: 0.5rem;
     font-weight: 700;
     padding: 0.1rem 0.3rem;
     border-radius: 50%;

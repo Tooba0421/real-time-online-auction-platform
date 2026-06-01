@@ -1,13 +1,6 @@
-import { useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { FaArrowLeft, FaLock } from "react-icons/fa";
-import { loadStripe } from "@stripe/stripe-js";
-import {
-  Elements,
-  CardElement,
-  useStripe,
-  useElements,
-} from "@stripe/react-stripe-js";
+import { FaArrowLeft, FaArrowRight } from "react-icons/fa";
 import { supabase } from "../../supabase/supabase";
 import { useAuthContext } from "../../context/AuthContext";
 import toast from "react-hot-toast";
@@ -16,240 +9,12 @@ import Footer from "../components/Footer";
 import "../styles/common.css";
 import "../styles/checkout.css";
 
-// ── Helpers ────────────────────────────────────────────────────────
-const toSlug = (title) =>
-  title?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "";
-
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
-
-const CARD_ELEMENT_OPTIONS = {
-  style: {
-    base: {
-      fontSize: "15px",
-      color: "#1a1a1a",
-      fontFamily: "inherit",
-      "::placeholder": { color: "#aab7c4" },
-    },
-    invalid: { color: "#ef4444" },
-  },
-};
-
-// ── Fee constants (single source of truth) ────────────────────────
-const SHIPPING_FEE     = 250;
-const SERVICE_TAX_PCT  = 0.02; // 2%
-const PLATFORM_FEE_PCT = 0.25; // 25%
-
-const calcAmounts = (winningBid) => {
-  const serviceTax   = Math.round(winningBid * SERVICE_TAX_PCT);
-  const totalAmount  = winningBid + SHIPPING_FEE + serviceTax;
-  const platformFee  = Math.round(totalAmount * PLATFORM_FEE_PCT);
-  const sellerAmount = totalAmount - platformFee;
-  return { serviceTax, totalAmount, platformFee, sellerAmount };
-};
-
-// ── PaymentForm — inner component inside <Elements> ───────────────
-const PaymentForm = ({ auctionData, shippingForm, winningBid }) => {
-  const stripe   = useStripe();
-  const elements = useElements();
-  const navigate = useNavigate();
-  const { user } = useAuthContext();
-
-  const [processing, setProcessing] = useState(false);
-  const [cardError, setCardError]   = useState("");
-
-  const { serviceTax, totalAmount, platformFee, sellerAmount } =
-    calcAmounts(winningBid);
-
-  const handleSubmit = async () => {
-    if (!stripe || !elements) return;
-
-    // Validate shipping form
-    const { fullName, email, phone, country, address, city, postalCode } = shippingForm;
-    if (!fullName || !email || !phone || !country || !address || !city || !postalCode) {
-      toast.error("Please fill all shipping address fields");
-      return;
-    }
-
-    setProcessing(true);
-    setCardError("");
-
-    try {
-      // ── Step 1: Create Stripe payment method ──────────────────────
-      const { error: stripeError } = await stripe.createPaymentMethod({
-        type: "card",
-        card: elements.getElement(CardElement),
-        billing_details: { name: fullName, email },
-      });
-
-      if (stripeError) {
-        setCardError(stripeError.message);
-        return;
-      }
-
-      // ── Step 2: Get buyer record ───────────────────────────────────
-      const { data: buyerData, error: buyerError } = await supabase
-        .from("buyers")
-        .select("id")
-        .eq("user_id", user.id)
-        .single();
-
-      if (buyerError || !buyerData) {
-        toast.error("Buyer record not found. Please contact support.");
-        return;
-      }
-
-      // ── Step 3: Create order ──────────────────────────────────────
-      // ✅ order_date field added — required by orders table
-      const { data: orderData, error: orderError } = await supabase
-        .from("orders")
-        .insert({
-          auction_id:   auctionData.auctionId,
-          buyer_id:     buyerData.id,
-          seller_id:    auctionData.sellerId,
-          amount:       winningBid,
-          service_tax:  serviceTax,
-          shipping_fee: SHIPPING_FEE,
-          total_amount: totalAmount,
-          order_status: "confirmed",
-          order_date:   new Date().toISOString(), // ✅ FIXED — was missing before
-        })
-        .select()
-        .single();
-
-      if (orderError) {
-        toast.error("Error creating order. Please try again.");
-        return;
-      }
-
-      // ── Step 4: Create payment record ─────────────────────────────
-      const { data: paymentData, error: paymentError } = await supabase
-        .from("payments")
-        .insert({
-          order_id:     orderData.id,
-          buyer_id:     buyerData.id,
-          seller_id:    auctionData.sellerId,
-          amount:       winningBid,
-          service_tax:  serviceTax,
-          shipping_fee: SHIPPING_FEE,
-          total_amount: totalAmount,
-          platform_fee: platformFee,
-          method:       "visa",
-          status:       "paid",
-          hold_status:  true,
-          payment_date: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (paymentError) {
-        toast.error("Error recording payment. Please contact support.");
-        return;
-      }
-
-      // ── Step 5: Create transaction record (7-day hold) ────────────
-      const holdUntil = new Date();
-      holdUntil.setDate(holdUntil.getDate() + 7);
-
-      const { error: txError } = await supabase
-        .from("transactions")
-        .insert({
-          payment_id:    paymentData.id,
-          seller_id:     auctionData.sellerId,
-          seller_amount: sellerAmount,
-          total_amount:  totalAmount,
-          status:        "onhold",
-          hold_until:    holdUntil.toISOString(),
-        });
-
-      if (txError) {
-        // Non-critical — log but don't block the buyer flow
-      }
-
-      // ── Step 6: Set winner_id if not already set ──────────────────
-      await supabase
-        .from("auctions")
-        .update({ winner_id: buyerData.id })
-        .eq("id", auctionData.auctionId)
-        .is("winner_id", null);
-
-      // ── Step 7: Notify seller ─────────────────────────────────────
-      await supabase.from("notifications").insert({
-        user_id:          auctionData.sellerUserId,
-        title:            `Payment Received for "${auctionData.title}"`,
-        message:          `The buyer has paid PKR ${totalAmount.toLocaleString()} for "${auctionData.title}". Please ship the item using TCS and enter the tracking number in your Orders page.`,
-        type:             "payment",
-        notification_for: "seller",
-        auction_id:       auctionData.auctionId,
-        product_slug:     toSlug(auctionData.title),
-        is_read:          false,
-      });
-
-      // ── Step 8: Notify buyer ──────────────────────────────────────
-      await supabase.from("notifications").insert({
-        user_id:          user.id,
-        title:            `Payment Successful for "${auctionData.title}"`,
-        message:          `Your payment of PKR ${totalAmount.toLocaleString()} for "${auctionData.title}" was successful. The seller will ship your item soon via TCS courier.`,
-        type:             "payment",
-        notification_for: "buyer",
-        auction_id:       auctionData.auctionId,
-        product_slug:     toSlug(auctionData.title),
-        is_read:          false,
-      });
-
-      toast.success("Payment successful! Your order has been placed.");
-      navigate("/notifications");
-
-    } catch (err) {
-      toast.error("Something went wrong. Please try again.");
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const { totalAmount: displayTotal } = calcAmounts(winningBid);
-
-  return (
-    <div className="stripe-form">
-      <h3>
-        <FaLock style={{ marginRight: "8px", fontSize: "14px" }} />
-        Card Details
-      </h3>
-      <p style={{ fontSize: "12px", color: "#888", marginBottom: "12px" }}>
-        Test card: 4242 4242 4242 4242 — any future date — any CVC
-      </p>
-
-      <div className="card-element-wrapper">
-        <CardElement options={CARD_ELEMENT_OPTIONS} />
-      </div>
-
-      {cardError && (
-        <p style={{ color: "#ef4444", fontSize: "13px", marginTop: "8px" }}>
-          {cardError}
-        </p>
-      )}
-
-      <button
-        type="button"
-        className="place-order"
-        onClick={handleSubmit}
-        disabled={!stripe || processing}
-      >
-        {processing ? "Processing..." : `Pay PKR ${displayTotal.toLocaleString()}`}
-      </button>
-
-      <p style={{ fontSize: "11px", color: "#aaa", textAlign: "center", marginTop: "10px" }}>
-        🔒 Secured by Stripe. Your card details are encrypted.
-      </p>
-    </div>
-  );
-};
-
-// ── CheckoutPage ───────────────────────────────────────────────────
 const CheckoutPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuthContext();
+  const { user, profile } = useAuthContext();
 
+  // Auction data passed from ProductDetailPage via navigate state
   const {
     auctionId, title, sellerName, sellerId, sellerUserId,
     endDate, totalBids, winningBid, image,
@@ -261,46 +26,156 @@ const CheckoutPage = () => {
 
   const [shippingForm, setShippingForm] = useState({
     fullName:   "",
-    email:      user?.email || "",
+    email:      "",
     phone:      "",
-    country:    "Pakistan",
     address:    "",
     city:       "",
     postalCode: "",
   });
 
-  // Guard — no auction data means user navigated here directly
+  const [loading, setLoading]   = useState(true);
+  const [saving, setSaving]     = useState(false);
+  const [alreadyPaid, setAlreadyPaid] = useState(false);
+
+  // ── On mount: pre-fill form from profiles + buyers table ─────────
+  useEffect(() => {
+    if (!user || !auctionId) { setLoading(false); return; }
+    fetchBuyerData();
+    checkAlreadyPaid();
+  }, [user, auctionId]);
+
+  const fetchBuyerData = async () => {
+    try {
+      // Fetch buyer record (phone, address, city, postal_code)
+      const { data: buyerData } = await supabase
+        .from("buyers")
+        .select("phone_no, address, city, postal_code")
+        .eq("user_id", user.id)
+        .single();
+
+      // Pre-fill form — name and email from profile/auth, rest from buyers
+      setShippingForm({
+        fullName:   profile?.name  || "",
+        email:      user?.email    || "",
+        phone:      buyerData?.phone_no    || "",
+        address:    buyerData?.address     || "",
+        city:       buyerData?.city        || "",
+        postalCode: buyerData?.postal_code || "",
+      });
+    } catch (err) {
+      console.error("fetchBuyerData error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkAlreadyPaid = async () => {
+    const { data } = await supabase
+      .from("orders")
+      .select("id")
+      .eq("auction_id", auctionId)
+      .maybeSingle();
+    if (data) setAlreadyPaid(true);
+  };
+
+  const handleFormChange = (field) => (e) =>
+    setShippingForm((prev) => ({ ...prev, [field]: e.target.value }));
+
+  // ── Continue to Payment ───────────────────────────────────────────
+  const handleContinue = async () => {
+    const { fullName, email, phone, address, city, postalCode } = shippingForm;
+
+    // Validate all fields
+    if (!fullName || !email || !phone || !address || !city || !postalCode) {
+      toast.error("Please fill all shipping fields");
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      // ✅ Save/update phone, address, city, postal_code in buyers table
+      const { error } = await supabase
+        .from("buyers")
+        .update({
+          phone_no:    phone.trim(),
+          address:     address.trim(),
+          city:        city.trim(),
+          postal_code: postalCode.trim(),
+        })
+        .eq("user_id", user.id);
+
+      if (error) {
+        toast.error("Error saving shipping info. Please try again.");
+        console.error("Buyer update error:", error);
+        return;
+      }
+
+      // ✅ Navigate to payment page — pass all auction + shipping data
+      navigate("/payment", {
+        state: {
+          auctionId,
+          title,
+          sellerName,
+          sellerId,
+          sellerUserId,
+          endDate,
+          totalBids,
+          winningBid,
+          image,
+          shippingName:   fullName,
+          shippingEmail:  email,
+          shippingPhone:  phone,
+          shippingAddress: address,
+          shippingCity:   city,
+          shippingPostal: postalCode,
+        },
+      });
+
+    } catch (err) {
+      console.error(err);
+      toast.error("Something went wrong. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── Guards ────────────────────────────────────────────────────────
   if (!auctionId || !winningBid) {
     return (
       <>
         <Header />
         <div style={{ textAlign: "center", padding: "60px 20px" }}>
-          <button
-            className="back-btn"
-            onClick={() => window.history.length > 1 ? navigate(-1) : navigate("/")}
-          >
+          <button className="back-btn"
+            onClick={() => window.history.length > 1 ? navigate(-1) : navigate("/")}>
             <FaArrowLeft />
           </button>
           <h2 style={{ marginTop: "20px" }}>No checkout data found</h2>
-          <p style={{ color: "#888", marginTop: "10px" }}>
-            Please go back and try again.
-          </p>
+          <p style={{ color: "#888", marginTop: "10px" }}>Please go back and try again.</p>
         </div>
         <Footer />
       </>
     );
   }
 
-  const { serviceTax, totalAmount } = calcAmounts(winningBid);
-
-  const auctionData = {
-    auctionId, title, sellerName,
-    sellerId, sellerUserId,
-    endDate, totalBids, image,
-  };
-
-  const handleFormChange = (field) => (e) =>
-    setShippingForm((prev) => ({ ...prev, [field]: e.target.value }));
+  if (!loading && alreadyPaid) {
+    return (
+      <>
+        <Header />
+        <div style={{ textAlign: "center", padding: "60px 20px" }}>
+          <h2 style={{ marginTop: "20px" }}>Already Paid</h2>
+          <p style={{ color: "#888", marginTop: "10px" }}>
+            You have already completed payment for this auction.
+          </p>
+          <button className="place-bid-btn" style={{ marginTop: "20px" }}
+            onClick={() => navigate("/notifications")}>
+            View Notifications
+          </button>
+        </div>
+        <Footer />
+      </>
+    );
+  }
 
   return (
     <>
@@ -308,19 +183,19 @@ const CheckoutPage = () => {
 
       <div className="checkout-page">
 
+        {/* Page header */}
         <div className="page-header">
-          <button
-            className="back-btn"
-            onClick={() => window.history.length > 1 ? navigate(-1) : navigate("/")}
-          >
+          <button className="back-btn"
+            onClick={() => window.history.length > 1 ? navigate(-1) : navigate("/")}>
             <FaArrowLeft />
           </button>
-          <h2 className="page-heading">Auction Payment</h2>
+          <h2 className="page-heading">Checkout</h2>
         </div>
 
+        {/* Win banner */}
         <div className="auction-win-banner">
           🎉 Congratulations! You won this auction.
-          <span>Please complete payment within 24 hours.</span>
+          <span>Please complete your shipping details to proceed to payment.</span>
         </div>
 
         <div className="checkout-grid">
@@ -328,6 +203,7 @@ const CheckoutPage = () => {
           {/* ── LEFT ── */}
           <div className="checkout-left">
 
+            {/* Winning item */}
             <div className="card">
               <h3>Winning Item</h3>
               <div className="order-product">
@@ -339,58 +215,95 @@ const CheckoutPage = () => {
                     <p>Auction Ended: {new Date(endDate).toLocaleDateString()}</p>
                   )}
                   <p>Total Bids: {totalBids || 0}</p>
-                  <p>Winning Bid: PKR {winningBid?.toLocaleString()}</p>
+                  <p>Winning Bid: <strong>PKR {winningBid?.toLocaleString()}</strong></p>
                 </div>
               </div>
             </div>
 
+            {/* Shipping form */}
             <div className="card">
-              <h3>Shipping Address</h3>
-              <div className="checkout-form-grid">
-                {[
-                  { label: "Full Name", field: "fullName", type: "text"  },
-                  { label: "Email",     field: "email",    type: "email" },
-                  { label: "Phone",     field: "phone",    type: "text"  },
-                  { label: "Country",   field: "country",  type: "text"  },
-                ].map(({ label, field, type }) => (
-                  <div className="form-group" key={field}>
-                    <label>{label} <span className="compulsory">*</span></label>
-                    <input
-                      type={type}
-                      value={shippingForm[field]}
-                      onChange={handleFormChange(field)}
-                      required
-                    />
+              <h3>Shipping Information</h3>
+              <p style={{ fontSize: "12px", color: "#888", marginBottom: "16px" }}>
+                This information will be saved to your account and shared with the seller for delivery.
+              </p>
+
+              {loading ? (
+                <div style={{ textAlign: "center", padding: "30px", color: "#999" }}>
+                  Loading your information...
+                </div>
+              ) : (
+                <>
+                  <div className="checkout-form-grid">
+                    {/* Full Name — read only from profile */}
+                    <div className="form-group">
+                      <label>Full Name <span className="compulsory">*</span></label>
+                      <input
+                        type="text"
+                        value={shippingForm.fullName}
+                        onChange={handleFormChange("fullName")}
+                        placeholder="Your full name"
+                        required
+                      />
+                    </div>
+
+                    {/* Email — read only from auth */}
+                    <div className="form-group">
+                      <label>Email <span className="compulsory">*</span></label>
+                      <input
+                        type="email"
+                        value={shippingForm.email}
+                        readOnly
+                        style={{ background: "#f9f9f9", cursor: "not-allowed" }}
+                      />
+                    </div>
                   </div>
-                ))}
-              </div>
 
-              <div className="form-group">
-                <label>Address <span className="compulsory">*</span></label>
-                <input
-                  type="text"
-                  value={shippingForm.address}
-                  onChange={handleFormChange("address")}
-                  required
-                />
-              </div>
-
-              <div className="checkout-form-grid">
-                {[
-                  { label: "City",        field: "city"       },
-                  { label: "Postal Code", field: "postalCode" },
-                ].map(({ label, field }) => (
-                  <div className="form-group" key={field}>
-                    <label>{label} <span className="compulsory">*</span></label>
+                  <div className="form-group">
+                    <label>Phone Number <span className="compulsory">*</span></label>
                     <input
                       type="text"
-                      value={shippingForm[field]}
-                      onChange={handleFormChange(field)}
+                      value={shippingForm.phone}
+                      onChange={handleFormChange("phone")}
+                      placeholder="03XX-XXXXXXX"
                       required
                     />
                   </div>
-                ))}
-              </div>
+
+                  <div className="form-group">
+                    <label>Address <span className="compulsory">*</span></label>
+                    <input
+                      type="text"
+                      value={shippingForm.address}
+                      onChange={handleFormChange("address")}
+                      placeholder="House no, Street, Area"
+                      required
+                    />
+                  </div>
+
+                  <div className="checkout-form-grid">
+                    <div className="form-group">
+                      <label>City <span className="compulsory">*</span></label>
+                      <input
+                        type="text"
+                        value={shippingForm.city}
+                        onChange={handleFormChange("city")}
+                        placeholder="City"
+                        required
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Postal Code <span className="compulsory">*</span></label>
+                      <input
+                        type="text"
+                        value={shippingForm.postalCode}
+                        onChange={handleFormChange("postalCode")}
+                        placeholder="Postal code"
+                        required
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
           </div>
@@ -398,8 +311,7 @@ const CheckoutPage = () => {
           {/* ── RIGHT ── */}
           <div className="checkout-right card">
             <div className="order-summary">
-
-              <h3>Payment Summary</h3>
+              <h3>Order Summary</h3>
 
               <div className="summary-row">
                 <span>Winning Bid</span>
@@ -407,26 +319,34 @@ const CheckoutPage = () => {
               </div>
               <div className="summary-row">
                 <span>Shipping Fee (TCS)</span>
-                <span>PKR {SHIPPING_FEE.toLocaleString()}</span>
+                <span>PKR 250</span>
               </div>
               <div className="summary-row">
                 <span>Service Tax (2%)</span>
-                <span>PKR {serviceTax.toLocaleString()}</span>
+                <span>PKR {Math.round(winningBid * 0.02).toLocaleString()}</span>
               </div>
               <hr />
               <div className="summary-row total">
-                <span>Total Payment</span>
-                <span>PKR {totalAmount.toLocaleString()}</span>
+                <span>Total</span>
+                <span>PKR {(winningBid + 250 + Math.round(winningBid * 0.02)).toLocaleString()}</span>
               </div>
 
-              <Elements stripe={stripePromise}>
-                <PaymentForm
-                  auctionData={auctionData}
-                  shippingForm={shippingForm}
-                  winningBid={winningBid}
-                />
-              </Elements>
+              <button
+                className="place-order"
+                onClick={handleContinue}
+                disabled={saving || loading}
+                style={{ marginTop: "24px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
+              >
+                {saving ? "Saving..." : (
+                  <>
+                    Continue to Payment <FaArrowRight />
+                  </>
+                )}
+              </button>
 
+              <p style={{ fontSize: "11px", color: "#aaa", textAlign: "center", marginTop: "10px" }}>
+                Your shipping info will be saved to your account.
+              </p>
             </div>
           </div>
 

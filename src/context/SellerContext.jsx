@@ -243,6 +243,7 @@ export const SellerProvider = ({ children }) => {
         .eq("seller_id", id)
         .order("order_date", { ascending: false });
 
+        console.log("Orders Data:", data);
       if (!error) setOrders(data || []);
     } finally {
       setOrdersLoading(false);

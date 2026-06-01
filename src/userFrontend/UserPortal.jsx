@@ -14,6 +14,7 @@ import BecomeSeller from "./pages/BecomeSeller";
 import FAQ from "./pages/FAQ";
 import SearchPage from "./pages/SearchPage";
 import ProfilePage from "./pages/ProfilePage";
+import PaymentPage from "./pages/PaymentPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 
 const UserPortal = () => {
@@ -51,6 +52,12 @@ const UserPortal = () => {
       <Route path="/profile" element={
         <ProtectedRoute>
           <ProfilePage />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/payment" element={
+        <ProtectedRoute>
+          <PaymentPage />
         </ProtectedRoute>
       } />
 

@@ -36,11 +36,13 @@ const AuctionManagement = () => {
   const [newImages, setNewImages] = useState([]);
   const [saving, setSaving] = useState(false);
 
-  // ── Actions — optimistic local update ─────────────────────────────
+  // ── Pause auction (seller) ────────────────────────────────────────
   const handlePause = async (auction) => {
     try {
       setProcessing(auction.id);
+      // Optimistic update — status + paused_by change immediately
       updateAuctionLocally(auction.id, { status: "paused", paused_by: "seller" });
+      // pauseAuction now saves paused_time_remaining + sets end_time to 2099
       await pauseAuction(auction.id);
       toast.success("Auction paused");
     } catch (err) {
@@ -48,11 +50,14 @@ const AuctionManagement = () => {
       toast.error(err.message || "Failed to pause");
     } finally { setProcessing(null); }
   };
-
+ 
+  // ── Resume auction (seller) ───────────────────────────────────────
   const handleResume = async (auction) => {
     try {
       setProcessing(auction.id);
       updateAuctionLocally(auction.id, { status: "live", paused_by: null });
+      // resumeAuction recalculates end_time = now + paused_time_remaining
+      // Realtime will fire and update end_time in context automatically
       await resumeAuction(auction.id, auction.paused_by);
       toast.success("Auction resumed");
     } catch (err) {
@@ -260,9 +265,12 @@ const AuctionManagement = () => {
     plugins: { legend: { position: "top", align: "center", labels: { boxWidth: 30, padding: 15 } } },
   };
 
-  const formatDate = (dateStr) => {
+  const formatDate = (dateStr, status) => {
     if (!dateStr) return "—";
-    return new Date(dateStr).toLocaleDateString("en-PK", {
+    // ✅ If auction is paused, end_time is - "Paused" instead of actual date
+    const date = new Date(dateStr);
+    if (date.getFullYear() >= 2099) return "—";
+    return date.toLocaleDateString("en-PK", {
       year: "numeric", month: "short", day: "numeric",
       hour: "2-digit", minute: "2-digit",
     });

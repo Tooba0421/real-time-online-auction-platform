@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../supabase/supabase";
 import { useAuthContext } from "../../context/AuthContext";
@@ -13,9 +13,8 @@ const CATEGORIES = [
 ];
 
 const CreateAuction = () => {
-  const navigate = useNavigate();
-  const { user } = useAuthContext();
-  // ✅ Use sellerId from context — no need to fetch it again
+  const navigate  = useNavigate();
+  const { user }  = useAuthContext();
   const { sellerId, refetchAll } = useSellerContext();
 
   const [form, setForm] = useState({
@@ -24,9 +23,12 @@ const CreateAuction = () => {
     minIncrement: "", reservePrice: "", startTime: "", endTime: "",
     autoExtend: false, agreement: false,
   });
-  const [images, setImages] = useState([]);
-  const [error, setError] = useState("");
+  const [images, setImages]   = useState([]);
+  const [error, setError]     = useState("");
   const [loading, setLoading] = useState(false);
+
+  // ✅ Prevents double-submission (synchronous check, unlike setState)
+  const submittedRef = useRef(false);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -49,126 +51,162 @@ const CreateAuction = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // ✅ Synchronous guard — prevents double submission even on fast double-clicks
+    // Also prevents re-submission when tab is switched and returned to
+    if (submittedRef.current) return;
+    submittedRef.current = true;
+
+    // ── Validations ───────────────────────────────────────────────
     if (!form.title || !form.category || !form.startPrice) {
-      setError("Please fill all required fields."); return;
+      setError("Please fill all required fields.");
+      submittedRef.current = false; return;
     }
     if (images.length < 4) {
-      setError("You must upload at least 4 product images."); return;
+      setError("You must upload at least 4 product images.");
+      submittedRef.current = false; return;
     }
     if (!form.startTime || !form.endTime) {
-      setError("Please set auction start and end time."); return;
+      setError("Please set auction start and end time.");
+      submittedRef.current = false; return;
     }
     if (new Date(form.endTime) <= new Date(form.startTime)) {
-      setError("End time must be after start time."); return;
+      setError("End time must be after start time.");
+      submittedRef.current = false; return;
     }
     if (!form.agreement) {
-      setError("Please agree to the terms and conditions."); return;
+      setError("Please agree to the terms and conditions.");
+      submittedRef.current = false; return;
     }
 
     setError("");
+    setLoading(true);
 
     try {
-      setLoading(true);
-
-      // ✅ sellerId already available from context — no extra query
       if (!sellerId) {
         toast.error("Seller account not found. Please contact support.");
         return;
       }
 
-      // Insert product
+      // ── Step 1: Insert product ─────────────────────────────────
       const { data: productData, error: productError } = await supabase
         .from("products")
         .insert({
-          seller_id: sellerId,
-          title: form.title,
-          description: form.description,
-          category: form.category,
-          condition: form.condition || null,
-          material: form.material || null,
-          dimension: form.dimension || null,
-          weight: form.weight ? parseFloat(form.weight) : null,
-          base_price: parseFloat(form.startPrice),
+          seller_id:      sellerId,
+          title:          form.title,
+          description:    form.description,
+          category:       form.category,
+          condition:      form.condition   || null,
+          material:       form.material    || null,
+          dimension:      form.dimension   || null,
+          weight:         form.weight ? parseFloat(form.weight) : null,
+          base_price:     parseFloat(form.startPrice),
           reserved_price: form.reservePrice ? parseFloat(form.reservePrice) : null,
-          status: "pending",
+          status:         "pending",
         })
         .select()
         .single();
 
       if (productError) {
-        toast.error("Error creating product listing."); return;
+        toast.error("Error creating product listing.");
+        console.error("Product insert error:", productError);
+        return;
       }
 
-      // Upload images
+      // ── Step 2: Upload images ──────────────────────────────────
       const imageURLs = [];
       for (let i = 0; i < images.length; i++) {
         const filePath = `products/${productData.id}/image_${i + 1}`;
+
         const { error: uploadError } = await supabase.storage
           .from("auction-images")
-          .upload(filePath, images[i].file, { upsert: true });
-        if (uploadError) { toast.error(`Error uploading image ${i + 1}`); return; }
+          .upload(filePath, images[i].file, {
+            upsert: true,
+            // ✅ Explicitly set content type to prevent 400 errors
+            contentType: images[i].file.type || "image/jpeg",
+          });
+
+        if (uploadError) {
+          // ✅ Show exact error so user knows what went wrong
+          console.error(`Image ${i + 1} upload error:`, uploadError);
+          toast.error(`Error uploading image ${i + 1}: ${uploadError.message}`);
+          // ✅ Clean up product that was created before images failed
+          await supabase.from("products").delete().eq("id", productData.id);
+          return;
+        }
+
         const { data: urlData } = supabase.storage
           .from("auction-images").getPublicUrl(filePath);
         imageURLs.push({ url: urlData.publicUrl, isPrimary: i === 0 });
       }
 
-      // Insert images
-      const { error: imageError } = await supabase.from("product_images").insert(
-        imageURLs.map((img) => ({
+      // ── Step 3: Insert product_images ─────────────────────────
+      const { error: imageError } = await supabase
+        .from("product_images")
+        .insert(imageURLs.map((img) => ({
           product_id: productData.id,
-          image_url: img.url,
+          image_url:  img.url,
           is_primary: img.isPrimary,
-        }))
-      );
-      if (imageError) { toast.error("Error saving product images."); return; }
+        })));
 
-      // Create auction
-      const { error: auctionError } = await supabase.from("auctions").insert({
-        product_id: productData.id,
-        seller_id: sellerId,
-        start_time: new Date(form.startTime).toISOString(),
-        end_time: new Date(form.endTime).toISOString(),
-        min_increment: parseFloat(form.minIncrement) || 0,
-        highest_bid: 0,
-        status: "scheduled",
-        approval_status: "pending",
-        auto_extend: form.autoExtend,
-      });
-      if (auctionError) { toast.error("Error creating auction."); return; }
+      if (imageError) {
+        toast.error("Error saving product images.");
+        console.error("product_images insert error:", imageError);
+        return;
+      }
 
-      // Notify admin
+      // ── Step 4: Create auction ─────────────────────────────────
+      const { error: auctionError } = await supabase
+        .from("auctions")
+        .insert({
+          product_id:      productData.id,
+          seller_id:       sellerId,
+          start_time:      new Date(form.startTime).toISOString(),
+          end_time:        new Date(form.endTime).toISOString(),
+          min_increment:   parseFloat(form.minIncrement) || 0,
+          highest_bid:     0,
+          status:          "scheduled",
+          approval_status: "pending",
+          auto_extend:     form.autoExtend,
+        });
+
+      if (auctionError) {
+        toast.error("Error creating auction.");
+        console.error("Auction insert error:", auctionError);
+        return;
+      }
+
+      // ── Step 5: Notify admin (non-critical) ───────────────────
       const { data: adminData } = await supabase
         .from("profiles").select("id").eq("role", "admin").single();
       if (adminData) {
         await supabase.from("notifications").insert({
-          user_id: adminData.id,
-          title: "New Auction Created",
-          message: `A new auction "${form.title}" has been submitted for approval.`,
-          type: "approval",
+          user_id:          adminData.id,
+          title:            "New Auction Created",
+          message:          `A new auction "${form.title}" has been submitted for approval.`,
+          type:             "approval",
           notification_for: "admin",
-          is_read: false,
-        });
+          is_read:          false,
+        }).catch((e) => console.error("Admin notification error (non-critical):", e));
       }
 
       toast.success("Auction created successfully! Waiting for admin approval.");
-
-      // ✅ Trigger context refresh so all pages see the new auction immediately
       refetchAll();
-
-      // Navigate back to auction management
       navigate("/seller/auction-management");
 
     } catch (err) {
+      console.error("CreateAuction unexpected error:", err);
       toast.error("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
+      // ✅ Always reset ref so seller can try again after any error
+      submittedRef.current = false;
     }
   };
 
   return (
     <div className="create-auction">
       <div className="page-header">
-        <h2>Create New Auction</h2>
         <p>Fill in the details below to list your item for auction.</p>
       </div>
 
@@ -290,7 +328,7 @@ const CreateAuction = () => {
             onClick={() => navigate("/seller/auction-management")} disabled={loading}>
             Cancel
           </button>
-          <button type="submit" className="btn-primary" disabled={loading}>
+          <button type="submit" className="btn-primary" disabled={loading || submittedRef.current}>
             {loading ? "Creating Auction..." : "Create Auction"}
           </button>
         </div>

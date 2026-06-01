@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { supabase } from "../../supabase/supabase";
 import { useAuthContext } from "../../context/AuthContext";
 import { useAdminContext } from "../../context/AdminContext";
+import { pauseAuctionByAdmin, resumeAuctionByAdmin } from "../../utils/auctionHelper";
 import toast from "react-hot-toast";
 import StatusBadge from "../../common/components/StatusBadge";
 import ActionButton from "../../common/components/ActionButton";
@@ -28,34 +29,31 @@ const AuctionBidMonitoring = () => {
   const handlePause = async (auction) => {
     try {
       setProcessing(auction.id);
-      // Optimistic update
+      // Optimistic update — UI reflects pause immediately
       updateAuctionLocally(auction.id, { status: "paused", paused_by: "admin" });
-
-      const { error } = await supabase
-        .from("auctions")
-        .update({ status: "paused", paused_by: "admin" })
-        .eq("id", auction.id);
-
-      if (error) {
-        updateAuctionLocally(auction.id, { status: auction.status, paused_by: auction.paused_by });
-        toast.error("Error pausing auction");
-        return;
-      }
-
+ 
+      // ✅ FIXED — uses auctionHelper which saves paused_time_remaining
+      // and sets end_time to far future to prevent pg_cron auto-ending it
+      await pauseAuctionByAdmin(auction.id);
+ 
       await supabase.from("notifications").insert({
-        user_id: auction.sellers?.profiles?.id || auction.seller_id,
-        title: "Auction Paused by Admin",
-        message: `Your auction for "${auction.products?.title}" has been paused by admin.`,
-        type: "auction_ended",
+        user_id:          auction.sellers?.profiles?.id || auction.seller_id,
+        title:            "Auction Paused by Admin",
+        message:          `Your auction for "${auction.products?.title}" has been paused by admin.`,
+        type:             "auction_ended",
         notification_for: "seller",
-        is_read: false,
+        is_read:          false,
       });
-
+ 
       toast.success("Auction paused");
     } catch (err) {
+      // Rollback optimistic update on failure
+      updateAuctionLocally(auction.id, {
+        status:    auction.status,
+        paused_by: auction.paused_by,
+      });
       console.error(err);
-      toast.error("Something went wrong");
-      refetchAuctions(); // rollback via fresh fetch if something unexpected happened
+      toast.error("Error pausing auction");
     } finally {
       setProcessing(null);
     }
@@ -65,33 +63,31 @@ const AuctionBidMonitoring = () => {
   const handleResume = async (auction) => {
     try {
       setProcessing(auction.id);
+      // Optimistic update
       updateAuctionLocally(auction.id, { status: "live", paused_by: null });
-
-      const { error } = await supabase
-        .from("auctions")
-        .update({ status: "live", paused_by: null })
-        .eq("id", auction.id);
-
-      if (error) {
-        updateAuctionLocally(auction.id, { status: auction.status, paused_by: auction.paused_by });
-        toast.error("Error resuming auction");
-        return;
-      }
-
+ 
+      // ✅ FIXED — uses auctionHelper which restores correct end_time
+      // so the countdown timer resumes from exactly where it stopped
+      await resumeAuctionByAdmin(auction.id);
+ 
       await supabase.from("notifications").insert({
-        user_id: auction.sellers?.profiles?.id || auction.seller_id,
-        title: "Auction Resumed by Admin",
-        message: `Your auction for "${auction.products?.title}" has been resumed by admin.`,
-        type: "auction_ended",
+        user_id:          auction.sellers?.profiles?.id || auction.seller_id,
+        title:            "Auction Resumed by Admin",
+        message:          `Your auction for "${auction.products?.title}" has been resumed by admin.`,
+        type:             "auction_ended",
         notification_for: "seller",
-        is_read: false,
+        is_read:          false,
       });
-
+ 
       toast.success("Auction resumed");
     } catch (err) {
+      // Rollback optimistic update on failure
+      updateAuctionLocally(auction.id, {
+        status:    auction.status,
+        paused_by: auction.paused_by,
+      });
       console.error(err);
-      toast.error("Something went wrong");
-      refetchAuctions();
+      toast.error("Error resuming auction");
     } finally {
       setProcessing(null);
     }
