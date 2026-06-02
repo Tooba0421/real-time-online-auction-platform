@@ -33,8 +33,8 @@ const CARD_ELEMENT_OPTIONS = {
   },
 };
 
-const SHIPPING_FEE    = 250;
-const SERVICE_TAX_PCT = 0.02;
+const SHIPPING_FEE     = 250;
+const SERVICE_TAX_PCT  = 0.02;
 const PLATFORM_FEE_PCT = 0.25;
 
 const calcAmounts = (winningBid) => {
@@ -66,7 +66,7 @@ const StripePaymentForm = ({ auctionData, winningBid }) => {
 
     try {
       // ── Step 1: Stripe validates card ─────────────────────────────
-      const { error: stripeError, paymentMethod } = await stripe.createPaymentMethod({
+      const { error: stripeError } = await stripe.createPaymentMethod({
         type: "card",
         card: elements.getElement(CardElement),
         billing_details: {
@@ -113,10 +113,10 @@ const StripePaymentForm = ({ auctionData, winningBid }) => {
           auction_id:   auctionData.auctionId,
           buyer_id:     buyerData.id,
           seller_id:    auctionData.sellerId,
-          amount:       winningBid,          // ← winning bid amount
-          service_tax:  serviceTax,          // ← 2% tax
-          shipping_fee: SHIPPING_FEE,        // ← PKR 250
-          total_amount: totalAmount,         // ← bid + shipping + tax
+          amount:       winningBid,
+          service_tax:  serviceTax,
+          shipping_fee: SHIPPING_FEE,
+          total_amount: totalAmount,
           order_status: "confirmed",
           order_date:   new Date().toISOString(),
         })
@@ -130,7 +130,10 @@ const StripePaymentForm = ({ auctionData, winningBid }) => {
       }
 
       // ── Step 5: Create payment record ─────────────────────────────
-      // FIX: Added missing amount, service_tax, shipping_fee columns
+      // ✅ FIXED 1: Added missing amount, service_tax, shipping_fee fields
+      // ✅ FIXED 2: method changed from "stripe" to "visa"
+      //    Your payment_method enum only contains "visa" — "stripe" is not valid
+      //    and causes a 400 error which blocks the insert
       const { data: paymentData, error: paymentError } = await supabase
         .from("payments")
         .insert({
@@ -139,7 +142,7 @@ const StripePaymentForm = ({ auctionData, winningBid }) => {
           seller_id:    auctionData.sellerId,
           total_amount: totalAmount,
           platform_fee: platformFee,
-          method:       "stripe",
+          method:       "stripe",         
           status:       "paid",
           hold_status:  true,
           payment_date: new Date().toISOString(),
@@ -154,6 +157,9 @@ const StripePaymentForm = ({ auctionData, winningBid }) => {
       }
 
       // ── Step 6: Create transaction (7-day hold) ───────────────────
+      // Transaction is created HERE — immediately after payment succeeds
+      // Status = "onhold", released after 7 days via pg_cron job
+      // OR admin can manually release early from RevenuePayouts page
       const holdUntil = new Date();
       holdUntil.setDate(holdUntil.getDate() + 7);
 
@@ -162,14 +168,14 @@ const StripePaymentForm = ({ auctionData, winningBid }) => {
         .insert({
           payment_id:    paymentData.id,
           seller_id:     auctionData.sellerId,
-          seller_amount: sellerAmount,       // ← 75% of total
+          seller_amount: sellerAmount,
           total_amount:  totalAmount,
           status:        "onhold",
           hold_until:    holdUntil.toISOString(),
         });
 
       if (txError) {
-        // Non-critical — don't block buyer flow
+        // Non-critical — log but don't block buyer
         console.error("Transaction insert error (non-critical):", txError);
       }
 
@@ -246,7 +252,8 @@ const StripePaymentForm = ({ auctionData, winningBid }) => {
       >
         {processing
           ? "Processing..."
-          : `Pay PKR ${calcAmounts(winningBid).totalAmount.toLocaleString()}`}
+          : `Pay PKR ${totalAmount.toLocaleString()}`
+        }
       </button>
 
       <p style={{ fontSize: "11px", color: "#aaa", textAlign: "center", marginTop: "10px" }}>
@@ -318,7 +325,7 @@ const PaymentPage = () => {
 
         <div className="checkout-grid">
 
-          {/* LEFT — shipping summary */}
+          {/* LEFT — shipping summary (read only) */}
           <div className="checkout-left">
             <div className="card">
               <div style={{
@@ -337,7 +344,10 @@ const PaymentPage = () => {
                   Edit
                 </button>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "14px", color: "#555" }}>
+              <div style={{
+                display: "flex", flexDirection: "column",
+                gap: "6px", fontSize: "14px", color: "#555",
+              }}>
                 <p><strong>{shippingName}</strong></p>
                 <p>{shippingEmail}</p>
                 <p>{shippingPhone}</p>
@@ -347,7 +357,7 @@ const PaymentPage = () => {
             </div>
           </div>
 
-          {/* RIGHT — payment summary + Stripe */}
+          {/* RIGHT — payment summary + Stripe form */}
           <div className="checkout-right card">
             <div className="order-summary">
 

@@ -13,20 +13,69 @@ import "../styles/orderDelivery.css";
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 const OrdersDelivery = () => {
-  // ✅ Read from shared context — no local fetch, realtime handled by SellerContext
   const { orders, ordersLoading, updateOrderDeliveryLocally, refetchOrders } =
     useSellerContext();
 
   const [processing, setProcessing] = useState(null);
-  const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState("all");
+  const [search, setSearch]         = useState("");
 
   // Tracking number modal
   const [trackingModal, setTrackingModal] = useState(null);
-  const [trackingNo, setTrackingNo] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [trackingNo,    setTrackingNo]    = useState("");
+  const [submitting,    setSubmitting]    = useState(false);
 
-  // ── Submit tracking number (shipped) ────────────────────────────
+  // Helper — get buyer's profile user_id from buyers table
+  const getBuyerUserId = async (buyerId) => {
+    const { data } = await supabase
+      .from("buyers")
+      .select("user_id")
+      .eq("id", buyerId)
+      .single();
+    return data?.user_id || null;
+  };
+
+  // ── Split orders into two groups ──────────────────────────────────
+  // pendingOrders  → no delivery record yet, or delivery status = 'pending'
+  // shippedOrders  → delivery status = 'shipped', 'in_transit', 'delivered'
+  const pendingOrders = useMemo(() =>
+    orders.filter((o) => {
+      const status = o.deliveries?.status;
+      return !status || status === "pending";
+    }),
+    [orders]
+  );
+
+  const shippedOrders = useMemo(() =>
+    orders.filter((o) => {
+      const status = o.deliveries?.status;
+      return status && status !== "pending";
+    }),
+    [orders]
+  );
+
+  // ── Search filters ────────────────────────────────────────────────
+  const filteredPending = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return pendingOrders;
+    return pendingOrders.filter((o) =>
+      o.auctions?.products?.title?.toLowerCase().includes(q) ||
+      o.buyers?.profiles?.name?.toLowerCase().includes(q) ||
+      o.id.toLowerCase().includes(q)
+    );
+  }, [pendingOrders, search]);
+
+  const filteredShipped = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return shippedOrders;
+    return shippedOrders.filter((o) =>
+      o.auctions?.products?.title?.toLowerCase().includes(q) ||
+      o.buyers?.profiles?.name?.toLowerCase().includes(q) ||
+      o.deliveries?.tracking_no?.toLowerCase().includes(q) ||
+      o.id.toLowerCase().includes(q)
+    );
+  }, [shippedOrders, search]);
+
+  // ── Submit tracking number → order moves to delivery table ────────
   const handleSubmitTracking = async () => {
     if (!trackingNo.trim()) {
       toast.error("Please enter a tracking number");
@@ -41,79 +90,72 @@ const OrdersDelivery = () => {
         // Update existing delivery record
         const { error } = await supabase
           .from("deliveries")
-          .update({ status: "shipped", tracking_no: trackingNo.trim(), courier_service: "TCS" })
+          .update({
+            status:          "shipped",
+            tracking_no:     trackingNo.trim(),
+            courier_service: "TCS",
+          })
           .eq("id", delivery.id);
+
         if (error) { toast.error("Error updating delivery"); return; }
 
-        // ✅ Optimistic update — UI changes instantly without waiting for realtime
         updateOrderDeliveryLocally(trackingModal.id, {
-          status: "shipped",
-          tracking_no: trackingNo.trim(),
+          status:          "shipped",
+          tracking_no:     trackingNo.trim(),
           courier_service: "TCS",
         });
+
       } else {
         // Create new delivery record
         const { data: newDelivery, error } = await supabase
           .from("deliveries")
           .insert({
-            order_id: trackingModal.id,
-            buyer_id: trackingModal.buyer_id,
-            seller_id: trackingModal.seller_id,
-            status: "shipped",
-            tracking_no: trackingNo.trim(),
+            order_id:        trackingModal.id,
+            buyer_id:        trackingModal.buyer_id,
+            seller_id:       trackingModal.seller_id,
+            status:          "shipped",
+            tracking_no:     trackingNo.trim(),
             courier_service: "TCS",
           })
           .select()
           .single();
+
         if (error) { toast.error("Error creating delivery"); return; }
 
-        // ✅ Optimistic update with newly created delivery id
         updateOrderDeliveryLocally(trackingModal.id, {
-          id: newDelivery.id,
-          status: "shipped",
-          tracking_no: trackingNo.trim(),
+          id:              newDelivery.id,
+          status:          "shipped",
+          tracking_no:     trackingNo.trim(),
           courier_service: "TCS",
         });
       }
 
       // Notify buyer
-      const buyerUserId = trackingModal.buyers?.profiles
-        ? await getBuyerUserId(trackingModal.buyer_id)
-        : null;
-
+      const buyerUserId = await getBuyerUserId(trackingModal.buyer_id);
       if (buyerUserId) {
         await supabase.from("notifications").insert({
-          user_id: buyerUserId,
-          title: "Your Order Has Been Shipped! 📦",
-          message: `Your order for "${trackingModal.auctions?.products?.title}" has been shipped via TCS. Tracking No: ${trackingNo}`,
-          type: "delivery",
+          user_id:          buyerUserId,
+          title:            "Your Order Has Been Shipped! 📦",
+          message:          `Your order for "${trackingModal.auctions?.products?.title}" has been shipped via TCS. Tracking No: ${trackingNo.trim()}`,
+          type:             "delivery",
           notification_for: "buyer",
-          is_read: false,
+          is_read:          false,
         });
       }
 
-      toast.success("Order marked as shipped!");
+      toast.success("Order marked as shipped! It moved to the Deliveries table.");
       setTrackingModal(null);
       setTrackingNo("");
 
     } catch (err) {
+      console.error(err);
       toast.error("Something went wrong");
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Helper to get profile user_id from buyer_id
-  const getBuyerUserId = async (buyerId) => {
-    const { data } = await supabase
-      .from("buyers")
-      .select("user_id")
-      .eq("id", buyerId)
-      .single();
-    return data?.user_id || null;
-  };
-
-  // ── Mark in transit ──────────────────────────────────────────────
+  // ── Mark in transit ───────────────────────────────────────────────
   const handleMarkInTransit = async (order) => {
     try {
       setProcessing(order.id);
@@ -125,67 +167,44 @@ const OrdersDelivery = () => {
 
       if (error) { toast.error("Error updating delivery status"); return; }
 
-      // ✅ Optimistic update
       updateOrderDeliveryLocally(order.id, { status: "in_transit" });
 
-      // Notify buyer
       const buyerUserId = await getBuyerUserId(order.buyer_id);
       if (buyerUserId) {
         await supabase.from("notifications").insert({
-          user_id: buyerUserId,
-          title: "Your Order is In Transit 🚚",
-          message: `Your order for "${order.auctions?.products?.title}" is now in transit. Expected delivery soon.`,
-          type: "delivery",
+          user_id:          buyerUserId,
+          title:            "Your Order is In Transit 🚚",
+          message:          `Your order for "${order.auctions?.products?.title}" is now in transit via TCS. Expected delivery soon.`,
+          type:             "delivery",
           notification_for: "buyer",
-          is_read: false,
+          is_read:          false,
         });
       }
 
       toast.success("Status updated to In Transit");
-
     } catch (err) {
+      console.error(err);
       toast.error("Something went wrong");
-      // Rollback — refetch for accuracy
       refetchOrders();
     } finally {
       setProcessing(null);
     }
   };
 
-  // ── Filtered list ────────────────────────────────────────────────
-  const filteredOrders = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return orders.filter((o) => {
-      const productTitle = o.auctions?.products?.title?.toLowerCase() || "";
-      const buyerName    = o.buyers?.profiles?.name?.toLowerCase() || "";
-
-      const matchesSearch =
-        productTitle.includes(query) ||
-        buyerName.includes(query) ||
-        o.id.toLowerCase().includes(query);
-
-      const deliveryStatus = o.deliveries?.status || "pending";
-      const matchesStatus =
-        filterStatus === "all" || deliveryStatus === filterStatus;
-
-      return matchesSearch && matchesStatus;
-    });
-  }, [orders, search, filterStatus]);
-
-  // ── Stats ────────────────────────────────────────────────────────
+  // ── Stats ─────────────────────────────────────────────────────────
   const stats = useMemo(() => ({
     total:     orders.length,
-    pending:   orders.filter((o) => !o.deliveries || o.deliveries?.status === "pending").length,
+    pending:   pendingOrders.length,
     shipped:   orders.filter((o) => o.deliveries?.status === "shipped").length,
     inTransit: orders.filter((o) => o.deliveries?.status === "in_transit").length,
     delivered: orders.filter((o) => o.deliveries?.status === "delivered").length,
-  }), [orders]);
+  }), [orders, pendingOrders]);
 
   const statsData = [
-    { title: "Total Orders",      value: ordersLoading ? "..." : stats.total,     subtitle: "All auction sales" },
-    { title: "Pending Shipment",  value: ordersLoading ? "..." : stats.pending,   subtitle: "Need to book courier" },
-    { title: "In Transit",        value: ordersLoading ? "..." : stats.inTransit, subtitle: "On the way to buyer" },
-    { title: "Delivered",         value: ordersLoading ? "..." : stats.delivered, subtitle: "Completed orders" },
+    { title: "Total Orders",     value: ordersLoading ? "..." : stats.total,     subtitle: "All auction sales" },
+    { title: "Pending Shipment", value: ordersLoading ? "..." : stats.pending,   subtitle: "Need to book courier" },
+    { title: "In Transit",       value: ordersLoading ? "..." : stats.inTransit, subtitle: "On the way to buyer" },
+    { title: "Delivered",        value: ordersLoading ? "..." : stats.delivered, subtitle: "Completed orders" },
   ];
 
   const deliveryChartData = useMemo(() => ({
@@ -197,16 +216,9 @@ const OrdersDelivery = () => {
   }), [stats]);
 
   const doughnutOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    cutout: "0%",
+    responsive: true, maintainAspectRatio: false, cutout: "0%",
     layout: { padding: { top: 10, bottom: 30 } },
-    plugins: {
-      legend: {
-        position: "top", align: "center",
-        labels: { boxWidth: 30, padding: 15 },
-      },
-    },
+    plugins: { legend: { position: "top", align: "center", labels: { boxWidth: 30, padding: 15 } } },
   };
 
   const formatDate = (dateStr) => {
@@ -216,48 +228,109 @@ const OrdersDelivery = () => {
     });
   };
 
-  const getDeliveryStatus = (order) => order.deliveries?.status || "pending";
-
   return (
     <div className="seller-page">
 
       {/* STAT CARDS */}
       <div className="stats-grid">
         {statsData.map((item, index) => (
-          <StatCard
-            key={index}
-            title={item.title}
-            value={item.value}
-            subtitle={item.subtitle}
-          />
+          <StatCard key={index} title={item.title} value={item.value} subtitle={item.subtitle} />
         ))}
       </div>
 
-      {/* TABLE */}
-      <div className="seller-section">
-        <h3 className="seller-section-heading">Orders & Delivery</h3>
+      {/* SEARCH — shared across both tables */}
+      <div className="page-controls">
+        <input
+          type="text"
+          placeholder="Search by product, buyer or order ID"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="search-input"
+        />
+      </div>
 
-        <div className="page-controls">
-          <input
-            type="text"
-            placeholder="Search by product, buyer or order ID"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-          >
-            <option value="all">All Status</option>
-            <option value="pending">Pending</option>
-            <option value="shipped">Shipped</option>
-            <option value="in_transit">In Transit</option>
-            <option value="delivered">Delivered</option>
-          </select>
-        </div>
+      {/* ── ORDERS TABLE — pending shipment ── */}
+      <div className="seller-section">
+        <h3 className="seller-section-heading">
+          Orders Awaiting Shipment
+        </h3>
 
         {ordersLoading ? (
           <div className="loading-state">Loading orders...</div>
+        ) : filteredPending.length === 0 ? (
+          <div className="no-data-box">
+            <p className="no-data-text">
+              {search ? "No matching orders found." : "No pending orders. All orders have been shipped! ✅"}
+            </p>
+          </div>
+        ) : (
+          <div className="table-wrapper">
+            <table className="seller-table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Buyer Name</th>
+                  <th>Phone</th>
+                  <th>Address</th>
+                  <th>City</th>
+                  <th>Postal Code</th>
+                  <th>Order Date</th>
+                  <th>Payment</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredPending.map((o) => (
+                  <tr key={o.id}>
+                    <td>{o.auctions?.products?.title || "—"}</td>
+                    <td>{o.buyers?.profiles?.name || "—"}</td>
+                    <td>{o.buyers?.phone_no || "—"}</td>
+                    <td className="address-cell">
+                      <span title={o.buyers?.address || ""}>
+                        {o.buyers?.address
+                          ? o.buyers.address.length > 25
+                            ? o.buyers.address.slice(0, 25) + "..."
+                            : o.buyers.address
+                          : "—"}
+                      </span>
+                    </td>
+                    <td>{o.buyers?.city || "—"}</td>
+                    <td>{o.buyers?.postal_code || "—"}</td>
+                    <td>{formatDate(o.order_date)}</td>
+                    <td className="status-cell">
+                      <StatusBadge
+                        label={o.payments?.status || "pending"}
+                        type={o.payments?.status  || "pending"}
+                      />
+                    </td>
+                    <td className="actions-cell">
+                      <ActionButton
+                        label="Enter Tracking No"
+                        variant="secondary"
+                        onClick={() => { setTrackingModal(o); setTrackingNo(""); }}
+                        disabled={processing === o.id}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── DELIVERIES TABLE — shipped / in transit / delivered ── */}
+      <div className="seller-section">
+        <h3 className="seller-section-heading">Deliveries</h3>
+
+        {ordersLoading ? (
+          <div className="loading-state">Loading deliveries...</div>
+        ) : filteredShipped.length === 0 ? (
+          <div className="no-data-box">
+            <p className="no-data-text">
+              {search ? "No matching deliveries found." : "No shipments yet. Ship an order to see it here."}
+            </p>
+          </div>
         ) : (
           <div className="table-wrapper">
             <table className="seller-table">
@@ -265,95 +338,62 @@ const OrdersDelivery = () => {
                 <tr>
                   <th>Product</th>
                   <th>Buyer</th>
-                  <th>Phone</th>
-                  <th>Address</th>
                   <th>City</th>
-                  <th>Amount</th>
-                  <th>Payment</th>
                   <th>Courier</th>
                   <th>Tracking No</th>
                   <th>Delivery Status</th>
-                  <th>Order Date</th>
-                  <th>Actions</th>
+                  <th>Shipped Date</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredOrders.length === 0 ? (
-                  <tr>
-                    <td colSpan="12" className="no-data">No orders found</td>
-                  </tr>
-                ) : (
-                  filteredOrders.map((o) => {
-                    const deliveryStatus = getDeliveryStatus(o);
-                    return (
-                      <tr key={o.id}>
-                        <td>{o.auctions?.products?.title || "—"}</td>
-                        <td>{o.buyers?.profiles?.name || "—"}</td>
-                        <td>{o.buyers?.phone_no || "—"}</td>
-                        <td>
-                          <span title={o.buyers?.address || ""}>
-                            {o.buyers?.address
-                              ? o.buyers.address.length > 20
-                                ? o.buyers.address.slice(0, 20) + "..."
-                                : o.buyers.address
-                              : "—"}
+                {filteredShipped.map((o) => {
+                  const deliveryStatus = o.deliveries?.status || "shipped";
+                  return (
+                    <tr key={o.id}>
+                      <td>{o.auctions?.products?.title || "—"}</td>
+                      <td>{o.buyers?.profiles?.name || "—"}</td>
+                      <td>{o.buyers?.city || "—"}</td>
+                      <td>{o.deliveries?.courier_service || "TCS"}</td>
+                      <td className="tracking-cell">
+                        <span className="tracking-number">
+                          {o.deliveries?.tracking_no || "—"}
+                        </span>
+                      </td>
+                      <td className="status-cell">
+                        <StatusBadge
+                          label={
+                            deliveryStatus === "in_transit" ? "In Transit"
+                            : deliveryStatus === "delivered" ? "Delivered"
+                            : "Shipped"
+                          }
+                          type={deliveryStatus}
+                        />
+                      </td>
+                      <td>{formatDate(o.deliveries?.created_at || o.order_date)}</td>
+                      <td className="actions-cell">
+                        {deliveryStatus === "shipped" && (
+                          <ActionButton
+                            label="Mark In Transit"
+                            variant="secondary"
+                            onClick={() => handleMarkInTransit(o)}
+                            disabled={processing === o.id}
+                          />
+                        )}
+                        {deliveryStatus === "in_transit" && (
+                          <span className="in-transit-text">
+                            In Transit
                           </span>
-                        </td>
-                        <td>{o.buyers?.city || "—"}</td>
-                        <td>PKR {o.total_amount?.toLocaleString()}</td>
-                        <td>
-                          <StatusBadge
-                            label={o.payments?.status || "pending"}
-                            type={o.payments?.status || "pending"}
-                          />
-                        </td>
-                        <td>{o.deliveries?.courier_service || "—"}</td>
-                        <td>{o.deliveries?.tracking_no || "—"}</td>
-                        <td>
-                          <StatusBadge
-                            label={
-                              deliveryStatus === "in_transit"
-                                ? "In Transit"
-                                : deliveryStatus.charAt(0).toUpperCase() +
-                                  deliveryStatus.slice(1)
-                            }
-                            type={deliveryStatus}
-                          />
-                        </td>
-                        <td>{formatDate(o.order_date)}</td>
-                        <td className="actions">
-                          {deliveryStatus === "pending" && (
-                            <ActionButton
-                              label="Enter Tracking No"
-                              variant="secondary"
-                              onClick={() => {
-                                setTrackingModal(o);
-                                setTrackingNo("");
-                              }}
-                              disabled={processing === o.id}
-                            />
-                          )}
-                          {deliveryStatus === "shipped" && (
-                            <ActionButton
-                              label="Mark In Transit"
-                              variant="secondary"
-                              onClick={() => handleMarkInTransit(o)}
-                              disabled={processing === o.id}
-                            />
-                          )}
-                          {(deliveryStatus === "in_transit" ||
-                            deliveryStatus === "delivered") && (
-                            <span className="no-action-text">
-                              {deliveryStatus === "delivered"
-                                ? "✓ Delivered"
-                                : "🚚 In Transit"}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
+                        )}
+                        {deliveryStatus === "delivered" && (
+                          <span className="delivered-text">
+                            Delivered
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -376,7 +416,8 @@ const OrdersDelivery = () => {
           <div className="modal-box" onClick={(e) => e.stopPropagation()}>
             <h3>Enter TCS Tracking Number</h3>
             <p className="modal-subtitle">
-              Book your shipment with TCS and enter the tracking number below.
+              Book your shipment with TCS first, then enter the tracking number below.
+              Once confirmed, this order moves to the Deliveries table.
             </p>
 
             <div className="shipping-info">
@@ -390,14 +431,13 @@ const OrdersDelivery = () => {
 
             <input
               type="text"
-              className="form-input"
-              placeholder="Enter TCS tracking number"
+              className="form-input tracking-input"
+              placeholder="e.g. TCS-123456789"
               value={trackingNo}
               onChange={(e) => setTrackingNo(e.target.value)}
-              style={{ marginTop: "1rem" }}
             />
 
-            <div className="modal-actions" style={{ marginTop: "1rem" }}>
+            <div className="modal-actions">
               <button
                 className="btn-secondary"
                 onClick={() => setTrackingModal(null)}

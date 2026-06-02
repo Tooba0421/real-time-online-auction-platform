@@ -81,7 +81,7 @@ const ProductManagement = () => {
       ]);
 
       toast.success(`"${product.title}" approved!`);
-      refetchProducts();
+      setTimeout(() => refetchProducts(), 500);
 
     } catch (err) {
       console.error("handleApprove unexpected error:", err);
@@ -147,7 +147,7 @@ const ProductManagement = () => {
       toast.success(`"${selectedProduct.title}" rejected`);
       setSelectedProduct(null);
       setReasonText("");
-      refetchProducts();
+      setTimeout(() => refetchProducts(), 500);
 
     } catch (err) {
       console.error("handleConfirmReject unexpected error:", err);

@@ -1,1 +1,62 @@
 
+/* OrdersDelivery.css - All styles moved from inline styles */
+
+/* Search input */
+.search-input {
+  max-width: 400px;
+}
+
+/* Pending badge */
+.pending-badge {
+  margin-left: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #fef3c7;
+  color: #92400e;
+  padding: 2px 10px;
+  border-radius: 12px;
+}
+
+/* No data text */
+.no-data-text {
+  text-align: center;
+  padding: 30px;
+  color: #999;
+}
+
+/* Address cell truncation */
+.address-cell span {
+  display: inline-block;
+  max-width: 200px;
+}
+
+/* Tracking number cell */
+.tracking-number {
+  font-family: monospace;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+/* In transit text */
+.in-transit-text {
+  color: #8b5cf6;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Delivered text */
+.delivered-text {
+  color: #22c55e;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Modal input spacing */
+.tracking-input {
+  margin-top: 1rem;
+}
+
+/* Modal actions spacing */
+.modal-actions {
+  margin-top: 1rem;
+}

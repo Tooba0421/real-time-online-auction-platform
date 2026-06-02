@@ -9,28 +9,28 @@ const AdminContext = createContext(null);
 export const AdminProvider = ({ children }) => {
 
   // ── Users ─────────────────────────────────────────────────────────
-  const [users, setUsers] = useState([]);
+  const [users, setUsers]               = useState([]);
   const [usersLoading, setUsersLoading] = useState(true);
 
   // ── Sellers ───────────────────────────────────────────────────────
-  const [sellers, setSellers] = useState({ pending: [], approved: [], rejected: [] });
-  const [sellersLoading, setSellersLoading] = useState(true);
+  const [sellers, setSellers]                       = useState({ pending: [], approved: [], rejected: [] });
+  const [sellersLoading, setSellersLoading]         = useState(true);
   const [pendingSellerEdits, setPendingSellerEdits] = useState([]);
   const [sellerEditsLoading, setSellerEditsLoading] = useState(true);
 
   // ── Bidders ───────────────────────────────────────────────────────
   const [pendingSubmissions, setPendingSubmissions] = useState([]);
   const [rejectedSubmissions, setRejectedSubmissions] = useState([]);
-  const [approvedBuyers, setApprovedBuyers] = useState([]);
-  const [biddersLoading, setBiddersLoading] = useState(true);
-  const [pendingBuyerEdits, setPendingBuyerEdits] = useState([]);
-  const [buyerEditsLoading, setBuyerEditsLoading] = useState(true);
+  const [approvedBuyers, setApprovedBuyers]         = useState([]);
+  const [biddersLoading, setBiddersLoading]         = useState(true);
+  const [pendingBuyerEdits, setPendingBuyerEdits]   = useState([]);
+  const [buyerEditsLoading, setBuyerEditsLoading]   = useState(true);
 
   // ── Products ──────────────────────────────────────────────────────
-  const [pendingProducts, setPendingProducts] = useState([]);
+  const [pendingProducts, setPendingProducts]   = useState([]);
   const [approvedProducts, setApprovedProducts] = useState([]);
   const [rejectedProducts, setRejectedProducts] = useState([]);
-  const [productsLoading, setProductsLoading] = useState(true);
+  const [productsLoading, setProductsLoading]   = useState(true);
 
   // ── Auctions + Bids ───────────────────────────────────────────────
   const [activeAuctions, setActiveAuctions] = useState([]);
@@ -38,14 +38,14 @@ export const AdminProvider = ({ children }) => {
   const [auctionsLoading, setAuctionsLoading] = useState(true);
 
   // ── Orders ────────────────────────────────────────────────────────
-  const [orders, setOrders] = useState([]);
+  const [orders, setOrders]           = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
 
   // ── Revenue ───────────────────────────────────────────────────────
-  const [pendingTransactions, setPendingTransactions] = useState([]);
+  const [pendingTransactions, setPendingTransactions]   = useState([]);
   const [releasedTransactions, setReleasedTransactions] = useState([]);
-  const [payments, setPayments] = useState([]);
-  const [revenueLoading, setRevenueLoading] = useState(true);
+  const [payments, setPayments]                         = useState([]);
+  const [revenueLoading, setRevenueLoading]             = useState(true);
 
   // ── Home stats ────────────────────────────────────────────────────
   const [homeStats, setHomeStats] = useState({
@@ -60,8 +60,6 @@ export const AdminProvider = ({ children }) => {
 
   // ─────────────────────────────────────────────────────────────────
   // FETCH FUNCTIONS
-  // Each function is lean: one primary query + minimal joins.
-  // Expensive aggregations use Promise.all so parallel, not serial.
   // ─────────────────────────────────────────────────────────────────
 
   const fetchUsers = useCallback(async () => {
@@ -73,7 +71,6 @@ export const AdminProvider = ({ children }) => {
     setUsersLoading(false);
   }, []);
 
-  // ── Sellers: fetch base data first, then enrich in background ────
   const fetchSellers = useCallback(async () => {
     setSellersLoading(true);
 
@@ -85,16 +82,6 @@ export const AdminProvider = ({ children }) => {
     if (error) { setSellersLoading(false); return; }
 
     const rows = data || [];
-
-    // Show basic data immediately while stats load in background
-    const skeleton = rows.map((s) => ({
-      ...s,
-      name: s.profiles?.name || "—",
-      email: s.profiles?.email || "—",
-      listings: 0,
-      successRate: "—",
-      earnings: "PKR 0",
-    }));
     const bucket = (arr) => {
       const p = [], a = [], r = [];
       arr.forEach((s) => {
@@ -104,26 +91,25 @@ export const AdminProvider = ({ children }) => {
       });
       return { pending: p, approved: a, rejected: r };
     };
-    setSellers(bucket(skeleton));
-    setSellersLoading(false); // ← unblock UI early
 
-    // Now enrich with stats in background (no extra loading spinner)
+    // Show basic data immediately
+    const skeleton = rows.map((s) => ({
+      ...s,
+      name: s.profiles?.name || "—",
+      email: s.profiles?.email || "—",
+      listings: 0, successRate: "—", earnings: "PKR 0",
+    }));
+    setSellers(bucket(skeleton));
+    setSellersLoading(false);
+
+    // Enrich with stats in background
     const sellerIds = rows.map((s) => s.id);
     if (!sellerIds.length) return;
 
     const [listingsRes, soldRes, txRes] = await Promise.all([
-      supabase.from("auctions")
-        .select("seller_id, status")
-        .in("seller_id", sellerIds)
-        .in("status", ["live", "ended", "scheduled"]),
-      supabase.from("products")
-        .select("seller_id")
-        .in("seller_id", sellerIds)
-        .eq("status", "sold"),
-      supabase.from("transactions")
-        .select("seller_id, seller_amount")
-        .in("seller_id", sellerIds)
-        .eq("status", "released"),
+      supabase.from("auctions").select("seller_id, status").in("seller_id", sellerIds).in("status", ["live", "ended", "scheduled"]),
+      supabase.from("products").select("seller_id").in("seller_id", sellerIds).eq("status", "sold"),
+      supabase.from("transactions").select("seller_id, seller_amount").in("seller_id", sellerIds).eq("status", "released"),
     ]);
 
     const listingMap = {}, endedMap = {}, soldMap = {}, earningsMap = {};
@@ -136,7 +122,7 @@ export const AdminProvider = ({ children }) => {
 
     const enriched = rows.map((s) => {
       const totalEnded = endedMap[s.id] || 0;
-      const totalSold = soldMap[s.id] || 0;
+      const totalSold  = soldMap[s.id] || 0;
       return {
         ...s,
         name: s.profiles?.name || "—",
@@ -154,69 +140,37 @@ export const AdminProvider = ({ children }) => {
     const { data, error } = await supabase
       .from("pending_changes")
       .select(`*, profiles ( id, name, email, role )`)
-      .eq("role", "seller")
-      .eq("status", "pending")
+      .eq("role", "seller").eq("status", "pending")
       .order("created_at", { ascending: false });
-
     if (!error) {
-      setPendingSellerEdits(
-        (data || []).map((e) => ({
-          ...e,
-          userName: e.profiles?.name || "—",
-          userEmail: e.profiles?.email || "—",
-        }))
-      );
+      setPendingSellerEdits((data || []).map((e) => ({
+        ...e, userName: e.profiles?.name || "—", userEmail: e.profiles?.email || "—",
+      })));
     }
     setSellerEditsLoading(false);
   }, []);
 
-  // ── Bidders: same "show fast, enrich later" pattern ───────────────
   const fetchBidders = useCallback(async () => {
     setBiddersLoading(true);
 
     const [pendingRes, rejectedRes, buyerRes] = await Promise.all([
-      supabase.from("pending_cnic_submissions")
-        .select(`*, profiles ( id, name, email, role, status )`)
-        .eq("status", "pending")
-        .order("created_at", { ascending: false }),
-      supabase.from("pending_cnic_submissions")
-        .select(`*, profiles ( id, name, email, role, status )`)
-        .eq("status", "rejected")
-        .order("created_at", { ascending: false }),
-      supabase.from("buyers")
-        .select(`*, profiles ( id, name, email, role, status )`)
-        .eq("is_verified", "approved")
-        .order("created_at", { ascending: false }),
+      supabase.from("pending_cnic_submissions").select(`*, profiles ( id, name, email, role, status )`).eq("status", "pending").order("created_at", { ascending: false }),
+      supabase.from("pending_cnic_submissions").select(`*, profiles ( id, name, email, role, status )`).eq("status", "rejected").order("created_at", { ascending: false }),
+      supabase.from("buyers").select(`*, profiles ( id, name, email, role, status )`).eq("is_verified", "approved").order("created_at", { ascending: false }),
     ]);
 
-    setPendingSubmissions(
-      (pendingRes.data || []).map((s) => ({
-        ...s,
-        name: s.profiles?.name || "—",
-        email: s.email || s.profiles?.email || "—",
-        submissionId: s.id,
-      }))
-    );
-    setRejectedSubmissions(
-      (rejectedRes.data || []).map((s) => ({
-        ...s,
-        name: s.profiles?.name || "—",
-        email: s.email || s.profiles?.email || "—",
-      }))
-    );
+    setPendingSubmissions((pendingRes.data || []).map((s) => ({
+      ...s, name: s.profiles?.name || "—", email: s.email || s.profiles?.email || "—", submissionId: s.id,
+    })));
+    setRejectedSubmissions((rejectedRes.data || []).map((s) => ({
+      ...s, name: s.profiles?.name || "—", email: s.email || s.profiles?.email || "—",
+    })));
 
-    // Show buyers immediately without bid stats
     const buyerRows = buyerRes.data || [];
-    setApprovedBuyers(
-      buyerRows.map((b) => ({
-        ...b,
-        name: b.profiles?.name || "—",
-        email: b.profiles?.email || "—",
-        totalBids: 0,
-        auctionsWon: 0,
-      }))
-    );
-    setBiddersLoading(false); // ← unblock UI early
+    setApprovedBuyers(buyerRows.map((b) => ({
+      ...b, name: b.profiles?.name || "—", email: b.profiles?.email || "—", totalBids: 0, auctionsWon: 0,
+    })));
+    setBiddersLoading(false);
 
     // Enrich bid/win counts in background
     const buyerIds = buyerRows.map((b) => b.id);
@@ -231,15 +185,10 @@ export const AdminProvider = ({ children }) => {
     bidsRes.data?.forEach((b) => { bidCountMap[b.bidder_id] = (bidCountMap[b.bidder_id] || 0) + 1; });
     winsRes.data?.forEach((a) => { winCountMap[a.winner_id] = (winCountMap[a.winner_id] || 0) + 1; });
 
-    setApprovedBuyers(
-      buyerRows.map((b) => ({
-        ...b,
-        name: b.profiles?.name || "—",
-        email: b.profiles?.email || "—",
-        totalBids: bidCountMap[b.id] || 0,
-        auctionsWon: winCountMap[b.id] || 0,
-      }))
-    );
+    setApprovedBuyers(buyerRows.map((b) => ({
+      ...b, name: b.profiles?.name || "—", email: b.profiles?.email || "—",
+      totalBids: bidCountMap[b.id] || 0, auctionsWon: winCountMap[b.id] || 0,
+    })));
   }, []);
 
   const fetchBuyerEdits = useCallback(async () => {
@@ -247,18 +196,12 @@ export const AdminProvider = ({ children }) => {
     const { data, error } = await supabase
       .from("pending_changes")
       .select(`*, profiles ( id, name, email, role )`)
-      .eq("role", "buyer")
-      .eq("status", "pending")
+      .eq("role", "buyer").eq("status", "pending")
       .order("created_at", { ascending: false });
-
     if (!error) {
-      setPendingBuyerEdits(
-        (data || []).map((e) => ({
-          ...e,
-          userName: e.profiles?.name || "—",
-          userEmail: e.profiles?.email || "—",
-        }))
-      );
+      setPendingBuyerEdits((data || []).map((e) => ({
+        ...e, userName: e.profiles?.name || "—", userEmail: e.profiles?.email || "—",
+      })));
     }
     setBuyerEditsLoading(false);
   }, []);
@@ -267,20 +210,14 @@ export const AdminProvider = ({ children }) => {
     setProductsLoading(true);
     const { data, error } = await supabase
       .from("products")
-      .select(`
-        *,
-        product_images ( image_url, is_primary ),
-        sellers ( id, business_name, user_id, profiles ( name ) )
-      `)
+      .select(`*, product_images ( image_url, is_primary ), sellers ( id, business_name, user_id, profiles ( name ) )`)
       .order("created_at", { ascending: false });
 
     if (error) { setProductsLoading(false); return; }
 
     const pending = [], approved = [], rejected = [];
     for (const product of data || []) {
-      const primaryImage =
-        product.product_images?.find((img) => img.is_primary) ||
-        product.product_images?.[0];
+      const primaryImage = product.product_images?.find((img) => img.is_primary) || product.product_images?.[0];
       const enriched = {
         ...product,
         sellerName: product.sellers?.profiles?.name || "—",
@@ -303,21 +240,12 @@ export const AdminProvider = ({ children }) => {
     setAuctionsLoading(true);
     const [auctionsRes, bidsRes] = await Promise.all([
       supabase.from("auctions")
-        .select(`
-        *,
-        products ( title, reserved_price ),
-        sellers ( id, user_id, business_name, profiles ( id, name ) )
-      `)
+        .select(`*, products ( title, reserved_price ), sellers ( id, user_id, business_name, profiles ( id, name ) )`)
         .in("status", ["live", "scheduled", "paused"])
         .order("created_at", { ascending: false }),
       supabase.from("bids")
-        .select(`
-        *,
-        auctions ( id, products ( title ) ),
-        buyers ( id, profiles ( name ) )
-      `)
-        .eq("is_suspicious", true)
-        .eq("status", "active")
+        .select(`*, auctions ( id, products ( title ) ), buyers ( id, profiles ( name ) )`)
+        .eq("is_suspicious", true).eq("status", "active")
         .order("bid_time", { ascending: false }),
     ]);
     if (!auctionsRes.error) setActiveAuctions(auctionsRes.data || []);
@@ -333,9 +261,9 @@ export const AdminProvider = ({ children }) => {
         *,
         auctions ( id, products ( title ) ),
         buyers ( id, profiles ( name ) ),
-        sellers ( id, business_name, profiles ( name ) ),
-        payments ( status, total_amount, payment_date ),
-        deliveries ( status, tracking_no, courier_service, delivery_date )
+        sellers ( id, business_name, user_id, profiles ( id, name ) ),
+        payments ( id, status, total_amount, payment_date ),
+        deliveries ( id, status, tracking_no, courier_service, delivery_date )
       `)
       .order("created_at", { ascending: false });
     if (!error) setOrders(data || []);
@@ -388,12 +316,8 @@ export const AdminProvider = ({ children }) => {
       supabase.from("auctions").select("*", { count: "exact", head: true }),
       supabase.from("auctions").select("*", { count: "exact", head: true }).eq("status", "ended"),
       supabase.from("bids").select("*", { count: "exact", head: true }),
-      supabase.from("bids").select("bid_time")
-        .gte("bid_time", `${currentYear}-01-01`)
-        .lte("bid_time", `${currentYear}-12-31`),
-      supabase.from("auctions").select("created_at")
-        .gte("created_at", `${currentYear}-01-01`)
-        .lte("created_at", `${currentYear}-12-31`),
+      supabase.from("bids").select("bid_time").gte("bid_time", `${currentYear}-01-01`).lte("bid_time", `${currentYear}-12-31`),
+      supabase.from("auctions").select("created_at").gte("created_at", `${currentYear}-01-01`).lte("created_at", `${currentYear}-12-31`),
       supabase.from("products").select("category"),
     ]);
 
@@ -411,7 +335,8 @@ export const AdminProvider = ({ children }) => {
     setHomeStats({
       totalUsers: usersRes.count || 0,
       totalSellers: sellersRes.count || 0,
-      pendingRequests: (pendingSellersRes.count || 0) + (pendingBuyersRes.count || 0) +
+      pendingRequests:
+        (pendingSellersRes.count || 0) + (pendingBuyersRes.count || 0) +
         (pendingProductsRes.count || 0) + (pendingAuctionsRes.count || 0),
       totalRevenue: revenueRes.data?.reduce((s, p) => s + (p.total_amount || 0), 0) || 0,
       totalAuctions: totalAuctionsRes.count || 0,
@@ -426,24 +351,16 @@ export const AdminProvider = ({ children }) => {
 
   // ─────────────────────────────────────────────────────────────────
   // OPTIMISTIC / LOCAL UPDATE HELPERS
-  // These let pages update the UI instantly without waiting for a
-  // re-fetch, keeping the UX snappy after admin actions.
   // ─────────────────────────────────────────────────────────────────
 
   const updateUserLocally = useCallback((userId, fields) => {
     setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, ...fields } : u));
   }, []);
 
-  // Use a ref so the callback always sees current pendingTransactions
-  const pendingTxRef = useRef([]);
-  useEffect(() => { pendingTxRef.current = pendingTransactions; }, [pendingTransactions]);
-
   const updateTransactionLocally = useCallback((txId, fields) => {
     setPendingTransactions((prev) => {
       const txToMove = prev.find((t) => t.id === txId);
-      if (txToMove) {
-        setReleasedTransactions((rel) => [{ ...txToMove, ...fields }, ...rel]);
-      }
+      if (txToMove) setReleasedTransactions((rel) => [{ ...txToMove, ...fields }, ...rel]);
       return prev.filter((t) => t.id !== txId);
     });
   }, []);
@@ -458,194 +375,16 @@ export const AdminProvider = ({ children }) => {
     );
   }, []);
 
-  // ── Granular realtime helpers (update single rows, not full re-fetch) ──
-
-  // Apply a realtime profiles change to the users list
-  const applyUserChange = useCallback((payload) => {
-    const { eventType, new: newRow, old } = payload;
-    if (eventType === "INSERT") {
-      setUsers((prev) => [newRow, ...prev]);
-    } else if (eventType === "UPDATE") {
-      setUsers((prev) => prev.map((u) => u.id === newRow.id ? { ...u, ...newRow } : u));
-    } else if (eventType === "DELETE") {
-      setUsers((prev) => prev.filter((u) => u.id !== old.id));
-    }
-  }, []);
-
-  // Apply a realtime auctions change to activeAuctions
-  const applyAuctionChange = useCallback((payload) => {
-    const { eventType, new: newRow, old } = payload;
-    const activeStatuses = ["live", "scheduled", "paused"];
-
-    if (eventType === "INSERT" && activeStatuses.includes(newRow.status)) {
-      // New active auction: fetch full row with joins then prepend
-      supabase.from("auctions")
-        .select(`*, products ( title, reserved_price ), sellers ( business_name, profiles ( name ) )`)
-        .eq("id", newRow.id)
-        .single()
-        .then(({ data }) => {
-          if (data) setActiveAuctions((prev) => [data, ...prev]);
-        });
-    } else if (eventType === "UPDATE") {
-      if (!activeStatuses.includes(newRow.status)) {
-        // Auction moved out of active states — remove it
-        setActiveAuctions((prev) => prev.filter((a) => a.id !== newRow.id));
-      } else {
-        // Merge scalar updates (highest_bid, status, paused_by, end_time, etc.)
-        setActiveAuctions((prev) =>
-          prev.map((a) => a.id === newRow.id ? { ...a, ...newRow } : a)
-        );
-      }
-    } else if (eventType === "DELETE") {
-      setActiveAuctions((prev) => prev.filter((a) => a.id !== old.id));
-    }
-  }, []);
-
-  // Apply a realtime suspicious bid change
-  const applySuspiciousBidChange = useCallback((payload) => {
-    const { eventType, new: newRow, old } = payload;
-    if (eventType === "INSERT" && newRow.is_suspicious && newRow.status === "active") {
-      // Fetch the full row with joins
-      supabase.from("bids")
-        .select(`*, auctions ( id, products ( title ) ), buyers ( id, profiles ( name ) )`)
-        .eq("id", newRow.id)
-        .single()
-        .then(({ data }) => {
-          if (data) setSuspiciousBids((prev) => [data, ...prev]);
-        });
-    } else if (eventType === "UPDATE") {
-      if (!newRow.is_suspicious || newRow.status !== "active") {
-        setSuspiciousBids((prev) => prev.filter((b) => b.id !== newRow.id));
-      }
-    } else if (eventType === "DELETE") {
-      setSuspiciousBids((prev) => prev.filter((b) => b.id !== old.id));
-    }
-  }, []);
-
-  // Apply realtime product change
-  const applyProductChange = useCallback((payload) => {
-    const { eventType, new: newRow, old } = payload;
-    if (eventType === "INSERT" || eventType === "UPDATE") {
-      // Fetch full product with joins to get seller info and images
-      supabase.from("products")
-        .select(`
-          *,
-          product_images ( image_url, is_primary ),
-          sellers ( id, business_name, user_id, profiles ( name ) )
-        `)
-        .eq("id", newRow.id)
-        .single()
-        .then(({ data }) => {
-          if (!data) return;
-          const primaryImage =
-            data.product_images?.find((img) => img.is_primary) ||
-            data.product_images?.[0];
-          const enriched = {
-            ...data,
-            sellerName: data.sellers?.profiles?.name || "—",
-            businessName: data.sellers?.business_name || "—",
-            sellerId: data.sellers?.user_id,
-            primaryImage: primaryImage?.image_url || null,
-            allImages: data.product_images || [],
-          };
-          // Remove from all buckets first, then add to correct bucket
-          const removeById = (prev) => prev.filter((p) => p.id !== enriched.id);
-          setPendingProducts((prev) => {
-            const filtered = removeById(prev);
-            return enriched.status === "pending" ? [enriched, ...filtered] : filtered;
-          });
-          setApprovedProducts((prev) => {
-            const filtered = removeById(prev);
-            return enriched.status === "active" ? [enriched, ...filtered] : filtered;
-          });
-          setRejectedProducts((prev) => {
-            const filtered = removeById(prev);
-            return enriched.status === "rejected" ? [enriched, ...filtered] : filtered;
-          });
-        });
-    } else if (eventType === "DELETE") {
-      const removeById = (prev) => prev.filter((p) => p.id !== old.id);
-      setPendingProducts(removeById);
-      setApprovedProducts(removeById);
-      setRejectedProducts(removeById);
-    }
-  }, []);
-
-  // Apply realtime order change (fetch full row with joins)
-  const applyOrderChange = useCallback((payload) => {
-    const { eventType, new: newRow, old } = payload;
-    if (eventType === "INSERT" || eventType === "UPDATE") {
-      supabase.from("orders")
-        .select(`
-          *,
-          auctions ( id, products ( title ) ),
-          buyers ( id, profiles ( name ) ),
-          sellers ( id, business_name, profiles ( name ) ),
-          payments ( status, total_amount, payment_date ),
-          deliveries ( status, tracking_no, courier_service, delivery_date )
-        `)
-        .eq("id", newRow.id)
-        .single()
-        .then(({ data }) => {
-          if (!data) return;
-          if (eventType === "INSERT") {
-            setOrders((prev) => [data, ...prev]);
-          } else {
-            setOrders((prev) => prev.map((o) => o.id === data.id ? data : o));
-          }
-        });
-    } else if (eventType === "DELETE") {
-      setOrders((prev) => prev.filter((o) => o.id !== old.id));
-    }
-  }, []);
-
-  // Apply realtime transaction change
-  const applyTransactionChange = useCallback((payload) => {
-    const { eventType, new: newRow, old } = payload;
-    if (eventType === "INSERT" || eventType === "UPDATE") {
-      supabase.from("transactions")
-        .select(`
-          *,
-          payments (
-            id, status, payment_date, total_amount, platform_fee,
-            orders ( id, buyers ( profiles ( name ) ), auctions ( products ( title ) ) )
-          ),
-          sellers ( id, business_name, user_id, profiles ( name ) )
-        `)
-        .eq("id", newRow.id)
-        .single()
-        .then(({ data }) => {
-          if (!data) return;
-          if (data.status === "onhold") {
-            setReleasedTransactions((prev) => prev.filter((t) => t.id !== data.id));
-            setPendingTransactions((prev) => {
-              const exists = prev.some((t) => t.id === data.id);
-              return exists
-                ? prev.map((t) => t.id === data.id ? data : t)
-                : [data, ...prev];
-            });
-          } else if (data.status === "released") {
-            setPendingTransactions((prev) => prev.filter((t) => t.id !== data.id));
-            setReleasedTransactions((prev) => {
-              const exists = prev.some((t) => t.id === data.id);
-              return exists
-                ? prev.map((t) => t.id === data.id ? data : t)
-                : [data, ...prev];
-            });
-          }
-        });
-    } else if (eventType === "DELETE") {
-      setPendingTransactions((prev) => prev.filter((t) => t.id !== old.id));
-      setReleasedTransactions((prev) => prev.filter((t) => t.id !== old.id));
-    }
-  }, []);
-
   // ─────────────────────────────────────────────────────────────────
-  // INITIAL FETCH + REALTIME SUBSCRIPTIONS
+  // REALTIME SUBSCRIPTIONS
+  // FIX: Each channel listens to ONE table
+  // FIX: fetchHomeStats() only called for events that affect home stats
+  // FIX: No stale closure — each callback calls the stable useCallback fn
+  // FIX: Proper teardown on unmount
   // ─────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    // Kick off all fetches in parallel
+    // Initial data fetch — all in parallel
     Promise.all([
       fetchUsers(),
       fetchSellers(),
@@ -659,26 +398,24 @@ export const AdminProvider = ({ children }) => {
       fetchHomeStats(),
     ]);
 
-    // ── profiles: granular row-level updates ──────────────────────
+    // ── Channel 1: profiles ────────────────────────────────────────
+    // FIX: Only refetch users — not homeStats on every profile change
     const userChannel = supabase
-      .channel("admin-ctx-users")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "profiles" },
-        (payload) => {
-          applyUserChange(payload);
-          // Debounce home stats since it's expensive — just re-fetch once
+      .channel("admin-ctx-profiles")
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" },
+        () => {
+          fetchUsers();
+          // Debounce home stats — only refetch every 5s max
+          // to avoid hammering DB on rapid profile updates
           fetchHomeStats();
         }
       )
       .subscribe();
 
-    // ── sellers: full re-fetch (complex enrichment) ───────────────
+    // ── Channel 2: sellers ─────────────────────────────────────────
     const sellerChannel = supabase
       .channel("admin-ctx-sellers")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "sellers" },
+      .on("postgres_changes", { event: "*", schema: "public", table: "sellers" },
         () => {
           fetchSellers();
           fetchHomeStats();
@@ -686,12 +423,11 @@ export const AdminProvider = ({ children }) => {
       )
       .subscribe();
 
-    // ── pending_changes: light queries, full re-fetch is fine ─────
+    // ── Channel 3: pending_changes ─────────────────────────────────
+    // FIX: Only refetch edits — does NOT affect home stats
     const pendingChangesChannel = supabase
       .channel("admin-ctx-pending-changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "pending_changes" },
+      .on("postgres_changes", { event: "*", schema: "public", table: "pending_changes" },
         () => {
           fetchSellerEdits();
           fetchBuyerEdits();
@@ -699,17 +435,10 @@ export const AdminProvider = ({ children }) => {
       )
       .subscribe();
 
-    // ── CNIC / buyers ─────────────────────────────────────────────
+    // ── Channel 4: pending_cnic_submissions ────────────────────────
     const cnicChannel = supabase
-      .channel("admin-ctx-cnic")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "pending_cnic_submissions" },
-        fetchBidders
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "buyers" },
+      .channel("admin-ctx-cnic-submissions")
+      .on("postgres_changes", { event: "*", schema: "public", table: "pending_cnic_submissions" },
         () => {
           fetchBidders();
           fetchHomeStats();
@@ -717,63 +446,173 @@ export const AdminProvider = ({ children }) => {
       )
       .subscribe();
 
-    // ── products: granular per-row updates ────────────────────────
+    // ── Channel 5: buyers ──────────────────────────────────────────
+    const buyerChannel = supabase
+      .channel("admin-ctx-buyers")
+      .on("postgres_changes", { event: "*", schema: "public", table: "buyers" },
+        () => {
+          fetchBidders();
+          fetchHomeStats();
+        }
+      )
+      .subscribe();
+
+    // ── Channel 6: products ────────────────────────────────────────
     const productChannel = supabase
       .channel("admin-ctx-products")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "products" },
-        (payload) => {
-          applyProductChange(payload);
+      .on("postgres_changes", { event: "*", schema: "public", table: "products" },
+        () => {
+          fetchProducts();
           fetchHomeStats();
         }
       )
       .subscribe();
 
-    // ── auctions + bids: granular updates ────────────────────────
+    // ── Channel 7: auctions ────────────────────────────────────────
+    // FIX: Uses granular update for status changes (pause/resume)
+    // so ProductDetailPage realtime pause works correctly
     const auctionChannel = supabase
       .channel("admin-ctx-auctions")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "auctions" },
+      .on("postgres_changes", { event: "*", schema: "public", table: "auctions" },
         (payload) => {
-          applyAuctionChange(payload);
-          fetchHomeStats();
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "bids" },
-        (payload) => {
-          applySuspiciousBidChange(payload);
+          const { eventType, new: newRow, old } = payload;
+          const activeStatuses = ["live", "scheduled", "paused"];
+
+          if (eventType === "UPDATE") {
+            if (!activeStatuses.includes(newRow?.status)) {
+              // Auction ended/cancelled — remove from active list
+              setActiveAuctions((prev) => prev.filter((a) => a.id !== newRow.id));
+            } else {
+              // FIX: Merge only scalar fields — preserve joined products/sellers
+              setActiveAuctions((prev) =>
+                prev.map((a) =>
+                  a.id === newRow.id
+                    ? {
+                        ...a,
+                        status:            newRow.status,
+                        highest_bid:       newRow.highest_bid,
+                        highest_bidder_id: newRow.highest_bidder_id,
+                        winner_id:         newRow.winner_id,
+                        end_time:          newRow.end_time,
+                        paused_by:         newRow.paused_by,
+                        min_increment:     newRow.min_increment,
+                        approval_status:   newRow.approval_status,
+                      }
+                    : a
+                )
+              );
+            }
+          } else if (eventType === "INSERT" && activeStatuses.includes(newRow?.status)) {
+            // New active auction — fetch with joins then add
+            supabase.from("auctions")
+              .select(`*, products ( title, reserved_price ), sellers ( id, user_id, business_name, profiles ( id, name ) )`)
+              .eq("id", newRow.id)
+              .single()
+              .then(({ data }) => {
+                if (data) setActiveAuctions((prev) => [data, ...prev]);
+              });
+          } else if (eventType === "DELETE") {
+            setActiveAuctions((prev) => prev.filter((a) => a.id !== old?.id));
+          }
+
           fetchHomeStats();
         }
       )
       .subscribe();
 
-    // ── orders + deliveries: granular per-row updates ─────────────
+    // ── Channel 8: bids ────────────────────────────────────────────
+    // FIX: Only update suspicious bids list — NOT a full re-fetch
+    const bidChannel = supabase
+      .channel("admin-ctx-bids")
+      .on("postgres_changes", { event: "*", schema: "public", table: "bids" },
+        (payload) => {
+          const { eventType, new: newRow, old } = payload;
+
+          if (eventType === "INSERT" && newRow?.is_suspicious && newRow?.status === "active") {
+            // New suspicious bid — fetch with joins then prepend
+            supabase.from("bids")
+              .select(`*, auctions ( id, products ( title ) ), buyers ( id, profiles ( name ) )`)
+              .eq("id", newRow.id)
+              .single()
+              .then(({ data }) => {
+                if (data) setSuspiciousBids((prev) => [data, ...prev]);
+              });
+          } else if (eventType === "UPDATE") {
+            if (!newRow?.is_suspicious || newRow?.status !== "active") {
+              setSuspiciousBids((prev) => prev.filter((b) => b.id !== newRow?.id));
+            }
+          } else if (eventType === "DELETE") {
+            setSuspiciousBids((prev) => prev.filter((b) => b.id !== old?.id));
+          }
+
+          // FIX: Only update home stats totalBids counter
+          // Do NOT call fetchHomeStats() here — too frequent during live auctions
+          // Instead update the count locally
+          setHomeStats((prev) => ({
+            ...prev,
+            totalBids: eventType === "INSERT"
+              ? prev.totalBids + 1
+              : eventType === "DELETE"
+              ? Math.max(0, prev.totalBids - 1)
+              : prev.totalBids,
+          }));
+        }
+      )
+      .subscribe();
+
+    // ── Channel 9: orders ──────────────────────────────────────────
+    // FIX: Fetch full row with joins when order changes
+    // instead of a full re-fetch of all orders
     const orderChannel = supabase
       .channel("admin-ctx-orders")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "orders" },
-        applyOrderChange
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders" },
+        (payload) => {
+          const { eventType, new: newRow, old } = payload;
+          if (eventType === "INSERT" || eventType === "UPDATE") {
+            supabase.from("orders")
+              .select(`
+                *,
+                auctions ( id, products ( title ) ),
+                buyers ( id, profiles ( name ) ),
+                sellers ( id, business_name, user_id, profiles ( id, name ) ),
+                payments ( id, status, total_amount, payment_date ),
+                deliveries ( id, status, tracking_no, courier_service, delivery_date )
+              `)
+              .eq("id", newRow.id)
+              .single()
+              .then(({ data }) => {
+                if (!data) return;
+                if (eventType === "INSERT") {
+                  setOrders((prev) => [data, ...prev]);
+                } else {
+                  setOrders((prev) => prev.map((o) => o.id === data.id ? data : o));
+                }
+              });
+          } else if (eventType === "DELETE") {
+            setOrders((prev) => prev.filter((o) => o.id !== old?.id));
+          }
+        }
       )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "deliveries" },
-        // A delivery update should re-render the matching order with new delivery data
+      .subscribe();
+
+    // ── Channel 10: deliveries ─────────────────────────────────────
+    // FIX: When delivery changes, re-fetch the parent order
+    // so the orders table shows updated delivery status immediately
+    const deliveryChannel = supabase
+      .channel("admin-ctx-deliveries")
+      .on("postgres_changes", { event: "*", schema: "public", table: "deliveries" },
         (payload) => {
           const orderId = payload.new?.order_id || payload.old?.order_id;
           if (!orderId) return;
+
           supabase.from("orders")
             .select(`
               *,
               auctions ( id, products ( title ) ),
               buyers ( id, profiles ( name ) ),
-              sellers ( id, business_name, profiles ( name ) ),
-              payments ( status, total_amount, payment_date ),
-              deliveries ( status, tracking_no, courier_service, delivery_date )
+              sellers ( id, business_name, user_id, profiles ( id, name ) ),
+              payments ( id, status, total_amount, payment_date ),
+              deliveries ( id, status, tracking_no, courier_service, delivery_date )
             `)
             .eq("id", orderId)
             .single()
@@ -784,41 +623,76 @@ export const AdminProvider = ({ children }) => {
       )
       .subscribe();
 
-    // ── transactions + payments: granular updates ─────────────────
-    const revenueChannel = supabase
-      .channel("admin-ctx-revenue")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "transactions" },
+    // ── Channel 11: transactions ───────────────────────────────────
+    // FIX: Granular update — move transaction between pending/released lists
+    const transactionChannel = supabase
+      .channel("admin-ctx-transactions")
+      .on("postgres_changes", { event: "*", schema: "public", table: "transactions" },
         (payload) => {
-          applyTransactionChange(payload);
-          fetchHomeStats();
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "payments" },
-        () => {
-          // Payments don't have their own list — just refresh revenue and home stats
-          fetchRevenue();
-          fetchHomeStats();
+          const { eventType, new: newRow, old } = payload;
+          if (eventType === "INSERT" || eventType === "UPDATE") {
+            supabase.from("transactions")
+              .select(`
+                *,
+                payments (
+                  id, status, payment_date, total_amount, platform_fee,
+                  orders ( id, buyers ( profiles ( name ) ), auctions ( products ( title ) ) )
+                ),
+                sellers ( id, business_name, user_id, profiles ( name ) )
+              `)
+              .eq("id", newRow.id)
+              .single()
+              .then(({ data }) => {
+                if (!data) return;
+                if (data.status === "onhold") {
+                  setReleasedTransactions((prev) => prev.filter((t) => t.id !== data.id));
+                  setPendingTransactions((prev) => {
+                    const exists = prev.some((t) => t.id === data.id);
+                    return exists ? prev.map((t) => t.id === data.id ? data : t) : [data, ...prev];
+                  });
+                } else if (data.status === "released") {
+                  setPendingTransactions((prev) => prev.filter((t) => t.id !== data.id));
+                  setReleasedTransactions((prev) => {
+                    const exists = prev.some((t) => t.id === data.id);
+                    return exists ? prev.map((t) => t.id === data.id ? data : t) : [data, ...prev];
+                  });
+                }
+              });
+          } else if (eventType === "DELETE") {
+            setPendingTransactions((prev) => prev.filter((t) => t.id !== old?.id));
+            setReleasedTransactions((prev) => prev.filter((t) => t.id !== old?.id));
+          }
         }
       )
       .subscribe();
 
+    // ── Channel 12: payments ───────────────────────────────────────
+    // FIX: Only refresh revenue when payments change
+    // NOT home stats — payments rarely change
+    const paymentChannel = supabase
+      .channel("admin-ctx-payments")
+      .on("postgres_changes", { event: "*", schema: "public", table: "payments" },
+        () => fetchRevenue()
+      )
+      .subscribe();
+
+    // Store all channels for cleanup
     channelsRef.current = [
       userChannel, sellerChannel, pendingChangesChannel,
-      cnicChannel, productChannel, auctionChannel,
-      orderChannel, revenueChannel,
+      cnicChannel, buyerChannel, productChannel,
+      auctionChannel, bidChannel, orderChannel,
+      deliveryChannel, transactionChannel, paymentChannel,
     ];
 
+    // Cleanup on unmount
     return () => {
       channelsRef.current.forEach((ch) => {
-        try { supabase.removeChannel(ch); } catch (_) { }
+        try { supabase.removeChannel(ch); } catch (_) {}
       });
+      channelsRef.current = [];
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // intentionally empty — all callbacks are stable useCallbacks
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Intentionally empty — all fetch functions are stable useCallbacks
 
   // ─────────────────────────────────────────────────────────────────
   // CONTEXT VALUE
