@@ -3,34 +3,35 @@ import {
   useRef, useCallback,
 } from "react";
 import { supabase } from "../supabase/supabase";
+import toast from "react-hot-toast";
 
 const AdminContext = createContext(null);
 
 export const AdminProvider = ({ children }) => {
 
   // ── Users ─────────────────────────────────────────────────────────
-  const [users, setUsers]               = useState([]);
+  const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(true);
 
   // ── Sellers ───────────────────────────────────────────────────────
-  const [sellers, setSellers]                       = useState({ pending: [], approved: [], rejected: [] });
-  const [sellersLoading, setSellersLoading]         = useState(true);
+  const [sellers, setSellers] = useState({ pending: [], approved: [], rejected: [] });
+  const [sellersLoading, setSellersLoading] = useState(true);
   const [pendingSellerEdits, setPendingSellerEdits] = useState([]);
   const [sellerEditsLoading, setSellerEditsLoading] = useState(true);
 
   // ── Bidders ───────────────────────────────────────────────────────
   const [pendingSubmissions, setPendingSubmissions] = useState([]);
   const [rejectedSubmissions, setRejectedSubmissions] = useState([]);
-  const [approvedBuyers, setApprovedBuyers]         = useState([]);
-  const [biddersLoading, setBiddersLoading]         = useState(true);
-  const [pendingBuyerEdits, setPendingBuyerEdits]   = useState([]);
-  const [buyerEditsLoading, setBuyerEditsLoading]   = useState(true);
+  const [approvedBuyers, setApprovedBuyers] = useState([]);
+  const [biddersLoading, setBiddersLoading] = useState(true);
+  const [pendingBuyerEdits, setPendingBuyerEdits] = useState([]);
+  const [buyerEditsLoading, setBuyerEditsLoading] = useState(true);
 
   // ── Products ──────────────────────────────────────────────────────
-  const [pendingProducts, setPendingProducts]   = useState([]);
+  const [pendingProducts, setPendingProducts] = useState([]);
   const [approvedProducts, setApprovedProducts] = useState([]);
   const [rejectedProducts, setRejectedProducts] = useState([]);
-  const [productsLoading, setProductsLoading]   = useState(true);
+  const [productsLoading, setProductsLoading] = useState(true);
 
   // ── Auctions + Bids ───────────────────────────────────────────────
   const [activeAuctions, setActiveAuctions] = useState([]);
@@ -38,14 +39,14 @@ export const AdminProvider = ({ children }) => {
   const [auctionsLoading, setAuctionsLoading] = useState(true);
 
   // ── Orders ────────────────────────────────────────────────────────
-  const [orders, setOrders]           = useState([]);
+  const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
 
   // ── Revenue ───────────────────────────────────────────────────────
-  const [pendingTransactions, setPendingTransactions]   = useState([]);
+  const [pendingTransactions, setPendingTransactions] = useState([]);
   const [releasedTransactions, setReleasedTransactions] = useState([]);
-  const [payments, setPayments]                         = useState([]);
-  const [revenueLoading, setRevenueLoading]             = useState(true);
+  const [payments, setPayments] = useState([]);
+  const [revenueLoading, setRevenueLoading] = useState(true);
 
   // ── Home stats ────────────────────────────────────────────────────
   const [homeStats, setHomeStats] = useState({
@@ -55,298 +56,548 @@ export const AdminProvider = ({ children }) => {
     categoryData: {},
   });
   const [homeLoading, setHomeLoading] = useState(true);
+  const [homeStatsError, setHomeStatsError] = useState(false);
 
   const channelsRef = useRef([]);
+  const homeStatsTimeoutRef = useRef(null);
 
   // ─────────────────────────────────────────────────────────────────
   // FETCH FUNCTIONS
   // ─────────────────────────────────────────────────────────────────
 
   const fetchUsers = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .order("join_date", { ascending: false });
-    if (!error) setUsers(data || []);
-    setUsersLoading(false);
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .order("join_date", { ascending: false })
+      if (!error) setUsers(data || []);
+    } catch (err) {
+      console.error("fetchUsers error:", err);
+    } finally {
+      setUsersLoading(false);
+    }
   }, []);
 
   const fetchSellers = useCallback(async () => {
     setSellersLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("sellers")
+        .select(`*, profiles ( id, name, role, status, email )`)
+        .order("created_at", { ascending: false })
 
-    const { data, error } = await supabase
-      .from("sellers")
-      .select(`*, profiles ( id, name, role, status, email )`)
-      .order("created_at", { ascending: false });
+      if (error) {
+        console.error("fetchSellers error:", error);
+        setSellersLoading(false);
+        return;
+      }
 
-    if (error) { setSellersLoading(false); return; }
+      const rows = data || [];
 
-    const rows = data || [];
-    const bucket = (arr) => {
-      const p = [], a = [], r = [];
-      arr.forEach((s) => {
-        if (s.is_verified === "pending") p.push(s);
-        else if (s.is_verified === "approved") a.push(s);
-        else if (["rejected", "suspended"].includes(s.is_verified)) r.push(s);
-      });
-      return { pending: p, approved: a, rejected: r };
-    };
+      // Fetch rejection/suspension reasons from admin_actions
+      const rejectedSellerIds = rows
+        .filter(s => s.is_verified === "rejected" || s.is_verified === "suspended")
+        .map(s => s.id);
 
-    // Show basic data immediately
-    const skeleton = rows.map((s) => ({
-      ...s,
-      name: s.profiles?.name || "—",
-      email: s.profiles?.email || "—",
-      listings: 0, successRate: "—", earnings: "PKR 0",
-    }));
-    setSellers(bucket(skeleton));
-    setSellersLoading(false);
+      let reasonMap = {};
+      if (rejectedSellerIds.length > 0) {
+        const { data: actions } = await supabase
+          .from("admin_actions")
+          .select("target_id, remarks")
+          .in("target_id", rejectedSellerIds)
+          .in("action_type", ["reject", "suspend"])
+          .eq("target_table", "sellers")
+          .order("action_date", { ascending: false })
 
-    // Enrich with stats in background
-    const sellerIds = rows.map((s) => s.id);
-    if (!sellerIds.length) return;
+        // Keep only the most recent action per seller
+        actions?.forEach(a => {
+          if (!reasonMap[a.target_id]) reasonMap[a.target_id] = a.remarks;
+        });
+      }
 
-    const [listingsRes, soldRes, txRes] = await Promise.all([
-      supabase.from("auctions").select("seller_id, status").in("seller_id", sellerIds).in("status", ["live", "ended", "scheduled"]),
-      supabase.from("products").select("seller_id").in("seller_id", sellerIds).eq("status", "sold"),
-      supabase.from("transactions").select("seller_id, seller_amount").in("seller_id", sellerIds).eq("status", "released"),
-    ]);
+      const bucket = (arr) => {
+        const p = [], a = [], r = [];
+        arr.forEach((s) => {
+          if (s.is_verified === "pending") p.push(s);
+          else if (s.is_verified === "approved") a.push(s);
+          else if (["rejected", "suspended"].includes(s.is_verified)) r.push(s);
+        });
+        return { pending: p, approved: a, rejected: r };
+      };
 
-    const listingMap = {}, endedMap = {}, soldMap = {}, earningsMap = {};
-    listingsRes.data?.forEach((a) => {
-      listingMap[a.seller_id] = (listingMap[a.seller_id] || 0) + 1;
-      if (a.status === "ended") endedMap[a.seller_id] = (endedMap[a.seller_id] || 0) + 1;
-    });
-    soldRes.data?.forEach((p) => { soldMap[p.seller_id] = (soldMap[p.seller_id] || 0) + 1; });
-    txRes.data?.forEach((t) => { earningsMap[t.seller_id] = (earningsMap[t.seller_id] || 0) + (t.seller_amount || 0); });
-
-    const enriched = rows.map((s) => {
-      const totalEnded = endedMap[s.id] || 0;
-      const totalSold  = soldMap[s.id] || 0;
-      return {
+      // Show basic data immediately
+      const skeleton = rows.map((s) => ({
         ...s,
         name: s.profiles?.name || "—",
         email: s.profiles?.email || "—",
-        listings: listingMap[s.id] || 0,
-        successRate: totalEnded > 0 ? `${((totalSold / totalEnded) * 100).toFixed(1)}%` : "0%",
-        earnings: `PKR ${(earningsMap[s.id] || 0).toLocaleString()}`,
-      };
-    });
-    setSellers(bucket(enriched));
+        listings: 0,
+        successRate: "—",
+        earnings: "PKR 0",
+        // FIX: field is 'reason' to match SellerManagement.jsx display
+        reason: reasonMap[s.id] || null,
+      }));
+      setSellers(bucket(skeleton));
+      setSellersLoading(false);
+
+      // Enrich with stats in background
+      const sellerIds = rows.map((s) => s.id);
+      if (!sellerIds.length) return;
+
+      const [auctionsRes, txRes] = await Promise.all([
+        supabase
+          .from("auctions")
+          .select("seller_id, status, winner_id")
+          .in("seller_id", sellerIds),
+
+        supabase
+          .from("transactions")
+          .select("seller_id, seller_amount")
+          .in("seller_id", sellerIds)
+          .eq("status", "released"),
+      ]);
+
+      const listingMap = {};
+      const endedMap = {};
+      const successfulMap = {};
+      const earningsMap = {};
+
+      auctionsRes.data?.forEach((auction) => {
+        const sellerId = auction.seller_id;
+
+        listingMap[sellerId] =
+          (listingMap[sellerId] || 0) + 1;
+
+        if (auction.status === "ended") {
+          endedMap[sellerId] =
+            (endedMap[sellerId] || 0) + 1;
+
+          // Auction had a winner
+          if (auction.winner_id) {
+            successfulMap[sellerId] =
+              (successfulMap[sellerId] || 0) + 1;
+          }
+        }
+      });
+
+      txRes.data?.forEach((t) => {
+        earningsMap[t.seller_id] =
+          (earningsMap[t.seller_id] || 0) +
+          (t.seller_amount || 0);
+      });
+
+      const enriched = rows.map((s) => {
+        const totalEnded = endedMap[s.id] || 0;
+        const successfulAuctions = successfulMap[s.id] || 0;
+        return {
+          ...s,
+          name: s.profiles?.name || "—",
+          email: s.profiles?.email || "—",
+          listings: listingMap[s.id] || 0,
+          successRate:
+            totalEnded > 0
+              ? `${(
+                (successfulAuctions / totalEnded) *
+                100
+              ).toFixed(1)}%`
+              : "0%",
+          earnings: `PKR ${(earningsMap[s.id] || 0).toLocaleString()}`,
+          reason: reasonMap[s.id] || null,
+        };
+      });
+      setSellers(bucket(enriched));
+    } catch (err) {
+      console.error("fetchSellers unexpected error:", err);
+      setSellersLoading(false);
+    }
   }, []);
 
   const fetchSellerEdits = useCallback(async () => {
     setSellerEditsLoading(true);
-    const { data, error } = await supabase
-      .from("pending_changes")
-      .select(`*, profiles ( id, name, email, role )`)
-      .eq("role", "seller").eq("status", "pending")
-      .order("created_at", { ascending: false });
-    if (!error) {
-      setPendingSellerEdits((data || []).map((e) => ({
-        ...e, userName: e.profiles?.name || "—", userEmail: e.profiles?.email || "—",
-      })));
+    try {
+      const { data, error } = await supabase
+        .from("pending_changes")
+        .select("*")
+        .eq("role", "seller")
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+      if (!error) {
+        const rows = data || [];
+
+        const userIds = [...new Set(rows.map(d => d.user_id))];
+
+        const { data: profiles, error: profilesError } = await supabase
+          .from("profiles")
+          .select("id, name, email, role")
+          .in("id", userIds);
+        if (profilesError) {
+          console.error(
+            "Profiles fetch failed:",
+            profilesError
+          );
+        }
+
+        const profileMap = {};
+        profiles?.forEach(p => {
+          profileMap[p.id] = p;
+        });
+
+        setPendingSellerEdits(
+          (data || []).map(edit => ({
+            ...edit,
+            userName: profileMap[edit.user_id]?.name || "—",
+            userEmail: profileMap[edit.user_id]?.email || "—",
+          }))
+        );
+      }
+    } catch (err) {
+      console.error("fetchSellerEdits error:", err);
+    } finally {
+      setSellerEditsLoading(false);
     }
-    setSellerEditsLoading(false);
   }, []);
 
   const fetchBidders = useCallback(async () => {
     setBiddersLoading(true);
+    try {
+      const [pendingRes, rejectedRes, buyerRes] = await Promise.all([
+        supabase.from("pending_cnic_submissions").select(`*, profiles ( id, name, email, role, status )`).eq("status", "pending").order("created_at", { ascending: false }),
+        supabase.from("pending_cnic_submissions").select(`*, profiles ( id, name, email, role, status )`).eq("status", "rejected").order("created_at", { ascending: false }),
+        supabase.from("buyers").select(`*, profiles ( id, name, email, role, status )`).eq("is_verified", "approved").order("created_at", { ascending: false }),
+      ]);
 
-    const [pendingRes, rejectedRes, buyerRes] = await Promise.all([
-      supabase.from("pending_cnic_submissions").select(`*, profiles ( id, name, email, role, status )`).eq("status", "pending").order("created_at", { ascending: false }),
-      supabase.from("pending_cnic_submissions").select(`*, profiles ( id, name, email, role, status )`).eq("status", "rejected").order("created_at", { ascending: false }),
-      supabase.from("buyers").select(`*, profiles ( id, name, email, role, status )`).eq("is_verified", "approved").order("created_at", { ascending: false }),
-    ]);
+      setPendingSubmissions((pendingRes.data || []).map((s) => ({
+        ...s,
+        name: s.profiles?.name || "—",
+        email: s.email || s.profiles?.email || "—",
+        submissionId: s.id,
+      })));
+      setRejectedSubmissions((rejectedRes.data || []).map((s) => ({
+        ...s,
+        name: s.profiles?.name || "—",
+        email: s.email || s.profiles?.email || "—",
+      })));
 
-    setPendingSubmissions((pendingRes.data || []).map((s) => ({
-      ...s, name: s.profiles?.name || "—", email: s.email || s.profiles?.email || "—", submissionId: s.id,
-    })));
-    setRejectedSubmissions((rejectedRes.data || []).map((s) => ({
-      ...s, name: s.profiles?.name || "—", email: s.email || s.profiles?.email || "—",
-    })));
+      const buyerRows = buyerRes.data || [];
+      setApprovedBuyers(buyerRows.map((b) => ({
+        ...b,
+        name: b.profiles?.name || "—",
+        email: b.profiles?.email || "—",
+        totalBids: 0,
+        auctionsWon: 0,
+      })));
+      setBiddersLoading(false);
 
-    const buyerRows = buyerRes.data || [];
-    setApprovedBuyers(buyerRows.map((b) => ({
-      ...b, name: b.profiles?.name || "—", email: b.profiles?.email || "—", totalBids: 0, auctionsWon: 0,
-    })));
-    setBiddersLoading(false);
+      // Enrich bid/win counts in background
+      const buyerIds = buyerRows.map((b) => b.id);
+      if (!buyerIds.length) return;
 
-    // Enrich bid/win counts in background
-    const buyerIds = buyerRows.map((b) => b.id);
-    if (!buyerIds.length) return;
+      const [bidsRes, winsRes] = await Promise.all([
+        supabase.from("bids").select("bidder_id").in("bidder_id", buyerIds),
+        supabase.from("auctions").select("winner_id").in("winner_id", buyerIds),
+      ]);
 
-    const [bidsRes, winsRes] = await Promise.all([
-      supabase.from("bids").select("bidder_id").in("bidder_id", buyerIds),
-      supabase.from("auctions").select("winner_id").in("winner_id", buyerIds),
-    ]);
+      const bidCountMap = {}, winCountMap = {};
+      bidsRes.data?.forEach((b) => { bidCountMap[b.bidder_id] = (bidCountMap[b.bidder_id] || 0) + 1; });
+      winsRes.data?.forEach((a) => { winCountMap[a.winner_id] = (winCountMap[a.winner_id] || 0) + 1; });
 
-    const bidCountMap = {}, winCountMap = {};
-    bidsRes.data?.forEach((b) => { bidCountMap[b.bidder_id] = (bidCountMap[b.bidder_id] || 0) + 1; });
-    winsRes.data?.forEach((a) => { winCountMap[a.winner_id] = (winCountMap[a.winner_id] || 0) + 1; });
-
-    setApprovedBuyers(buyerRows.map((b) => ({
-      ...b, name: b.profiles?.name || "—", email: b.profiles?.email || "—",
-      totalBids: bidCountMap[b.id] || 0, auctionsWon: winCountMap[b.id] || 0,
-    })));
+      setApprovedBuyers(buyerRows.map((b) => ({
+        ...b,
+        name: b.profiles?.name || "—",
+        email: b.profiles?.email || "—",
+        totalBids: bidCountMap[b.id] || 0,
+        auctionsWon: winCountMap[b.id] || 0,
+      })));
+    } catch (err) {
+      console.error("fetchBidders error:", err);
+      setBiddersLoading(false);
+    }
   }, []);
 
   const fetchBuyerEdits = useCallback(async () => {
     setBuyerEditsLoading(true);
-    const { data, error } = await supabase
-      .from("pending_changes")
-      .select(`*, profiles ( id, name, email, role )`)
-      .eq("role", "buyer").eq("status", "pending")
-      .order("created_at", { ascending: false });
-    if (!error) {
-      setPendingBuyerEdits((data || []).map((e) => ({
-        ...e, userName: e.profiles?.name || "—", userEmail: e.profiles?.email || "—",
-      })));
+    try {
+      const { data, error } = await supabase
+        .from("pending_changes")
+        .select("*")
+        .eq("role", "buyer")
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+      if (!error) {
+        const rows = data || [];
+
+        const userIds = [...new Set(rows.map(d => d.user_id))];
+
+        const { data: profiles, error: profilesError } = await supabase
+          .from("profiles")
+          .select("id, name, email, role")
+          .in("id", userIds);
+
+        if (profilesError) {
+          console.error(
+            "Profiles fetch failed:",
+            profilesError
+          );
+        }
+
+        const profileMap = {};
+        profiles?.forEach(p => {
+          profileMap[p.id] = p;
+        });
+
+        setPendingBuyerEdits(
+          (data || []).map(edit => ({
+            ...edit,
+            userName: profileMap[edit.user_id]?.name || "—",
+            userEmail: profileMap[edit.user_id]?.email || "—",
+          }))
+        );
+      }
+    } catch (err) {
+      console.error("fetchBuyerEdits error:", err);
+    } finally {
+      setBuyerEditsLoading(false);
     }
-    setBuyerEditsLoading(false);
   }, []);
 
   const fetchProducts = useCallback(async () => {
     setProductsLoading(true);
-    const { data, error } = await supabase
-      .from("products")
-      .select(`*, product_images ( image_url, is_primary ), sellers ( id, business_name, user_id, profiles ( name ) )`)
-      .order("created_at", { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from("products")
+        .select(`*, product_images ( image_url, is_primary ), sellers ( id, business_name, user_id, profiles ( name ) )`)
+        .order("created_at", { ascending: false });
 
-    if (error) { setProductsLoading(false); return; }
+      if (error) {
+        console.error("fetchProducts error:", error);
+        setProductsLoading(false);
+        return;
+      }
 
-    const pending = [], approved = [], rejected = [];
-    for (const product of data || []) {
-      const primaryImage = product.product_images?.find((img) => img.is_primary) || product.product_images?.[0];
-      const enriched = {
-        ...product,
-        sellerName: product.sellers?.profiles?.name || "—",
-        businessName: product.sellers?.business_name || "—",
-        sellerId: product.sellers?.user_id,
-        primaryImage: primaryImage?.image_url || null,
-        allImages: product.product_images || [],
-      };
-      if (product.status === "pending") pending.push(enriched);
-      else if (product.status === "active") approved.push(enriched);
-      else if (product.status === "rejected") rejected.push(enriched);
+      // Fetch rejection reasons from admin_actions
+      const rejectedProductIds = (data || [])
+        .filter(p => p.status === "rejected")
+        .map(p => p.id);
+
+      let reasonMap = {};
+      if (rejectedProductIds.length > 0) {
+        const { data: actions } = await supabase
+          .from("admin_actions")
+          .select("target_id, remarks")
+          .in("target_id", rejectedProductIds)
+          .eq("action_type", "reject")
+          .eq("target_table", "products")
+          .order("action_date", { ascending: false })
+
+        actions?.forEach(a => {
+          if (!reasonMap[a.target_id]) reasonMap[a.target_id] = a.remarks;
+        });
+      }
+
+      const pending = [], approved = [], rejected = [];
+      for (const product of data || []) {
+        const primaryImage = product.product_images?.find((img) => img.is_primary) || product.product_images?.[0];
+        const enriched = {
+          ...product,
+          sellerName: product.sellers?.profiles?.name || "—",
+          businessName: product.sellers?.business_name || "—",
+          sellerId: product.sellers?.user_id,
+          primaryImage: primaryImage?.image_url || null,
+          allImages: product.product_images || [],
+          // FIX: field is 'reason' to match ProductManagement.jsx display
+          reason: reasonMap[product.id] || null,
+        };
+        if (product.status === "pending") pending.push(enriched);
+        else if (product.status === "active") approved.push(enriched);
+        else if (product.status === "rejected") rejected.push(enriched);
+      }
+      setPendingProducts(pending);
+      setApprovedProducts(approved);
+      setRejectedProducts(rejected);
+    } catch (err) {
+      console.error("fetchProducts error:", err);
+    } finally {
+      setProductsLoading(false);
     }
-    setPendingProducts(pending);
-    setApprovedProducts(approved);
-    setRejectedProducts(rejected);
-    setProductsLoading(false);
   }, []);
 
   const fetchAuctions = useCallback(async () => {
     setAuctionsLoading(true);
-    const [auctionsRes, bidsRes] = await Promise.all([
-      supabase.from("auctions")
-        .select(`*, products ( title, reserved_price ), sellers ( id, user_id, business_name, profiles ( id, name ) )`)
-        .in("status", ["live", "scheduled", "paused"])
-        .order("created_at", { ascending: false }),
-      supabase.from("bids")
-        .select(`*, auctions ( id, products ( title ) ), buyers ( id, profiles ( name ) )`)
-        .eq("is_suspicious", true).eq("status", "active")
-        .order("bid_time", { ascending: false }),
-    ]);
-    if (!auctionsRes.error) setActiveAuctions(auctionsRes.data || []);
-    if (!bidsRes.error) setSuspiciousBids(bidsRes.data || []);
-    setAuctionsLoading(false);
+    try {
+      const [auctionsRes, bidsRes] = await Promise.all([
+        supabase.from("auctions")
+          .select(`*, products ( title, reserved_price ), sellers ( id, user_id, business_name, profiles ( id, name ) )`)
+          .in("status", ["live", "scheduled", "paused"])
+          .order("created_at", { ascending: false }),
+        supabase.from("bids")
+          .select(`*, auctions ( id, products ( title ) ), buyers ( id, profiles ( name ) )`)
+          .eq("is_suspicious", true).eq("status", "active")
+          .order("bid_time", { ascending: false }),
+      ]);
+      if (!auctionsRes.error) setActiveAuctions(auctionsRes.data || []);
+      if (!bidsRes.error) setSuspiciousBids(bidsRes.data || []);
+    } catch (err) {
+      console.error("fetchAuctions error:", err);
+    } finally {
+      setAuctionsLoading(false);
+    }
   }, []);
 
   const fetchOrders = useCallback(async () => {
     setOrdersLoading(true);
-    const { data, error } = await supabase
-      .from("orders")
-      .select(`
-        *,
-        auctions ( id, products ( title ) ),
-        buyers ( id, profiles ( name ) ),
-        sellers ( id, business_name, user_id, profiles ( id, name ) ),
-        payments ( id, status, total_amount, payment_date ),
-        deliveries ( id, status, tracking_no, courier_service, delivery_date )
-      `)
-      .order("created_at", { ascending: false });
-    if (!error) setOrders(data || []);
-    setOrdersLoading(false);
+    try {
+      const { data, error } = await supabase
+        .from("orders")
+        .select(`
+          *,
+          auctions ( id, products ( title ) ),
+          buyers ( id, profiles ( name ) ),
+          sellers ( id, business_name, user_id, profiles ( id, name ) ),
+          payments ( id, status, total_amount, payment_date, hold_status ),
+          deliveries ( id, status, tracking_no, courier_service, delivery_date )
+        `)
+        .order("order_date", { ascending: false });
+      if (!error) setOrders(data || []);
+    } catch (err) {
+      console.error("fetchOrders error:", err);
+    } finally {
+      setOrdersLoading(false);
+    }
   }, []);
 
+  // FIX: fetchRevenue — correct filtering logic
+  // pending = transaction.status='onhold' AND payment.hold_status=true
+  // released = transaction.status='released'
   const fetchRevenue = useCallback(async () => {
     setRevenueLoading(true);
-    const [txRes, payRes] = await Promise.all([
-      supabase.from("transactions")
+    try {
+      const { data: txData, error: txError } = await supabase
+        .from("transactions")
         .select(`
           *,
           payments (
-            id, status, payment_date, total_amount, platform_fee,
-            orders ( id, buyers ( profiles ( name ) ), auctions ( products ( title ) ) )
+            id,
+            status,
+            hold_status,
+            payment_date,
+            total_amount,
+            platform_fee,
+            orders (
+              id,
+              buyers ( profiles ( name ) ),
+              auctions ( products ( title ) )
+            )
           ),
-          sellers ( id, business_name, user_id, profiles ( name ) )
+          sellers (
+            id,
+            business_name,
+            user_id,
+            profiles ( name )
+          )
         `)
-        .order("created_at", { ascending: false }),
-      supabase.from("payments")
-        .select("total_amount, payment_date, platform_fee")
+        .order("hold_until", { ascending: false })
+
+      if (txError) {
+        console.error("fetchRevenue transactions error:", txError);
+        toast.error("Failed to load revenue data");
+        return;
+      }
+      console.log(txData);
+      console.log(txError);
+
+      const allTransactions = txData || [];
+
+      // FIX: Correct filter — onhold means payment has hold_status=true
+      // A transaction can only be pending if its payment is still on hold
+      setPendingTransactions(
+        allTransactions.filter(
+          t =>
+            t.status?.toLowerCase() === "onhold" &&
+            t.payments?.hold_status === true
+        )
+      );
+      setReleasedTransactions(
+        allTransactions.filter(
+          t =>
+            t.status?.toLowerCase() === "released"
+        )
+      );
+
+      // Separate payments query for revenue charts
+      const { data: payData, error: payError } = await supabase
+        .from("payments")
+        .select("total_amount, payment_date, platform_fee, hold_status")
         .eq("status", "paid")
-        .order("payment_date", { ascending: true }),
-    ]);
-    if (!txRes.error) {
-      setPendingTransactions((txRes.data || []).filter((t) => t.status === "onhold"));
-      setReleasedTransactions((txRes.data || []).filter((t) => t.status === "released"));
+        .order("payment_date", { ascending: true });
+
+      if (!payError) setPayments(payData || []);
+
+    } catch (err) {
+      console.error("fetchRevenue error:", err);
+      toast.error("Failed to load revenue data");
+    } finally {
+      setRevenueLoading(false);
     }
-    if (!payRes.error) setPayments(payRes.data || []);
-    setRevenueLoading(false);
   }, []);
 
   const fetchHomeStats = useCallback(async () => {
     setHomeLoading(true);
+    setHomeStatsError(false);
     const currentYear = new Date().getFullYear();
 
-    const [
-      usersRes, sellersRes,
-      pendingSellersRes, pendingBuyersRes, pendingProductsRes, pendingAuctionsRes,
-      revenueRes, totalAuctionsRes, completedAuctionsRes, bidsRes,
-      monthlyBidsRes, monthlyAuctionsRes, categoryRes,
-    ] = await Promise.all([
-      supabase.from("profiles").select("*", { count: "exact", head: true }),
-      supabase.from("sellers").select("*", { count: "exact", head: true }).eq("is_verified", "approved"),
-      supabase.from("sellers").select("*", { count: "exact", head: true }).eq("is_verified", "pending"),
-      supabase.from("pending_cnic_submissions").select("*", { count: "exact", head: true }).eq("status", "pending"),
-      supabase.from("products").select("*", { count: "exact", head: true }).eq("status", "pending"),
-      supabase.from("auctions").select("*", { count: "exact", head: true }).eq("approval_status", "pending"),
-      supabase.from("payments").select("total_amount").eq("status", "paid"),
-      supabase.from("auctions").select("*", { count: "exact", head: true }),
-      supabase.from("auctions").select("*", { count: "exact", head: true }).eq("status", "ended"),
-      supabase.from("bids").select("*", { count: "exact", head: true }),
-      supabase.from("bids").select("bid_time").gte("bid_time", `${currentYear}-01-01`).lte("bid_time", `${currentYear}-12-31`),
-      supabase.from("auctions").select("created_at").gte("created_at", `${currentYear}-01-01`).lte("created_at", `${currentYear}-12-31`),
-      supabase.from("products").select("category"),
-    ]);
+    try {
+      const [
+        usersRes, sellersRes,
+        pendingSellersRes, pendingBuyersRes, pendingProductsRes, pendingAuctionsRes,
+        revenueRes, totalAuctionsRes, completedAuctionsRes, bidsRes,
+        monthlyBidsRes, monthlyAuctionsRes, categoryRes,
+      ] = await Promise.all([
+        supabase.from("profiles").select("*", { count: "exact", head: true }),
+        supabase.from("sellers").select("*", { count: "exact", head: true }).eq("is_verified", "approved"),
+        supabase.from("sellers").select("*", { count: "exact", head: true }).eq("is_verified", "pending"),
+        supabase.from("pending_cnic_submissions").select("*", { count: "exact", head: true }).eq("status", "pending"),
+        supabase.from("products").select("*", { count: "exact", head: true }).eq("status", "pending"),
+        supabase.from("auctions").select("*", { count: "exact", head: true }).eq("approval_status", "pending"),
+        supabase.from("payments").select("total_amount").eq("status", "paid"),
+        supabase.from("auctions").select("*", { count: "exact", head: true }),
+        supabase.from("auctions").select("*", { count: "exact", head: true }).eq("status", "ended"),
+        supabase.from("bids").select("*", { count: "exact", head: true }),
+        supabase.from("bids").select("bid_time").gte("bid_time", `${currentYear}-01-01`).lte("bid_time", `${currentYear}-12-31`),
+        supabase.from("auctions").select("created_at").gte("created_at", `${currentYear}-01-01`).lte("created_at", `${currentYear}-12-31`),
+        supabase.from("products").select("category"),
+      ]);
 
-    const bidsByMonth = Array(12).fill(0);
-    monthlyBidsRes.data?.forEach((b) => { bidsByMonth[new Date(b.bid_time).getMonth()]++; });
+      const bidsByMonth = Array(12).fill(0);
+      monthlyBidsRes.data?.forEach((b) => { bidsByMonth[new Date(b.bid_time).getMonth()]++; });
 
-    const auctionsByMonth = Array(12).fill(0);
-    monthlyAuctionsRes.data?.forEach((a) => { auctionsByMonth[new Date(a.created_at).getMonth()]++; });
+      const auctionsByMonth = Array(12).fill(0);
+      monthlyAuctionsRes.data?.forEach((a) => { auctionsByMonth[new Date(a.created_at).getMonth()]++; });
 
-    const catCounts = {};
-    categoryRes.data?.forEach((p) => {
-      if (p.category) catCounts[p.category] = (catCounts[p.category] || 0) + 1;
-    });
+      const catCounts = {};
+      categoryRes.data?.forEach((p) => {
+        if (p.category) catCounts[p.category] = (catCounts[p.category] || 0) + 1;
+      });
 
-    setHomeStats({
-      totalUsers: usersRes.count || 0,
-      totalSellers: sellersRes.count || 0,
-      pendingRequests:
-        (pendingSellersRes.count || 0) + (pendingBuyersRes.count || 0) +
-        (pendingProductsRes.count || 0) + (pendingAuctionsRes.count || 0),
-      totalRevenue: revenueRes.data?.reduce((s, p) => s + (p.total_amount || 0), 0) || 0,
-      totalAuctions: totalAuctionsRes.count || 0,
-      completedAuctions: completedAuctionsRes.count || 0,
-      totalBids: bidsRes.count || 0,
-      monthlyBids: bidsByMonth,
-      monthlyAuctions: auctionsByMonth,
-      categoryData: catCounts,
-    });
-    setHomeLoading(false);
+      setHomeStats({
+        totalUsers: usersRes.count || 0,
+        totalSellers: sellersRes.count || 0,
+        pendingRequests:
+          (pendingSellersRes.count || 0) + (pendingBuyersRes.count || 0) +
+          (pendingProductsRes.count || 0) + (pendingAuctionsRes.count || 0),
+        totalRevenue: revenueRes.data?.reduce((s, p) => s + (p.total_amount || 0), 0) || 0,
+        totalAuctions: totalAuctionsRes.count || 0,
+        completedAuctions: completedAuctionsRes.count || 0,
+        totalBids: bidsRes.count || 0,
+        monthlyBids: bidsByMonth,
+        monthlyAuctions: auctionsByMonth,
+        categoryData: catCounts,
+      });
+    } catch (err) {
+      console.error("fetchHomeStats error:", err);
+      setHomeStatsError(true);
+    } finally {
+      setHomeLoading(false);
+    }
   }, []);
 
   // ─────────────────────────────────────────────────────────────────
@@ -375,324 +626,321 @@ export const AdminProvider = ({ children }) => {
     );
   }, []);
 
+  // Debounced home stats — waits 5s after last event before re-fetching
+  const debouncedFetchHomeStats = useCallback(() => {
+    if (homeStatsTimeoutRef.current) clearTimeout(homeStatsTimeoutRef.current);
+    homeStatsTimeoutRef.current = setTimeout(() => fetchHomeStats(), 5000);
+  }, [fetchHomeStats]);
+
+  // ─────────────────────────────────────────────────────────────────
+  // JOIN HELPERS for realtime callbacks
+  // ─────────────────────────────────────────────────────────────────
+
+  const fetchJoinedAuction = useCallback(async (auctionId) => {
+    try {
+      const { data, error } = await supabase
+        .from("auctions")
+        .select(`*, products ( title, reserved_price ), sellers ( id, user_id, business_name, profiles ( id, name ) )`)
+        .eq("id", auctionId)
+        .single();
+      return error ? null : data;
+    } catch { return null; }
+  }, []);
+
+  const fetchJoinedOrder = useCallback(async (orderId) => {
+    try {
+      const { data, error } = await supabase
+        .from("orders")
+        .select(`
+          *,
+          auctions ( id, products ( title ) ),
+          buyers ( id, profiles ( name ) ),
+          sellers ( id, business_name, user_id, profiles ( id, name ) ),
+          payments ( id, status, total_amount, payment_date, hold_status ),
+          deliveries ( id, status, tracking_no, courier_service, delivery_date )
+        `)
+        .eq("id", orderId)
+        .single();
+      return error ? null : data;
+    } catch { return null; }
+  }, []);
+
+  const fetchJoinedTransaction = useCallback(async (transactionId) => {
+    try {
+      const { data, error } = await supabase
+        .from("transactions")
+        .select(`
+          *,
+          payments (
+            id, status, hold_status, payment_date, total_amount, platform_fee,
+            orders ( id, buyers ( profiles ( name ) ), auctions ( products ( title ) ) )
+          ),
+          sellers ( id, business_name, user_id, profiles ( name ) )
+        `)
+        .eq("id", transactionId)
+        .single();
+      return error ? null : data;
+    } catch { return null; }
+  }, []);
+
+  const fetchJoinedSuspiciousBid = useCallback(async (bidId) => {
+    try {
+      const { data, error } = await supabase
+        .from("bids")
+        .select(`*, auctions ( id, products ( title ) ), buyers ( id, profiles ( name ) )`)
+        .eq("id", bidId)
+        .single();
+      return error ? null : data;
+    } catch { return null; }
+  }, []);
+
   // ─────────────────────────────────────────────────────────────────
   // REALTIME SUBSCRIPTIONS
-  // FIX: Each channel listens to ONE table
-  // FIX: fetchHomeStats() only called for events that affect home stats
-  // FIX: No stale closure — each callback calls the stable useCallback fn
-  // FIX: Proper teardown on unmount
   // ─────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    // Initial data fetch — all in parallel
+    // Initial parallel fetch
     Promise.all([
-      fetchUsers(),
-      fetchSellers(),
-      fetchSellerEdits(),
-      fetchBidders(),
-      fetchBuyerEdits(),
-      fetchProducts(),
-      fetchAuctions(),
-      fetchOrders(),
-      fetchRevenue(),
-      fetchHomeStats(),
+      fetchUsers(), fetchSellers(), fetchSellerEdits(),
+      fetchBidders(), fetchBuyerEdits(), fetchProducts(),
+      fetchAuctions(), fetchOrders(), fetchRevenue(), fetchHomeStats(),
     ]);
 
-    // ── Channel 1: profiles ────────────────────────────────────────
-    // FIX: Only refetch users — not homeStats on every profile change
-    const userChannel = supabase
-      .channel("admin-ctx-profiles")
-      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" },
-        () => {
-          fetchUsers();
-          // Debounce home stats — only refetch every 5s max
-          // to avoid hammering DB on rapid profile updates
-          fetchHomeStats();
-        }
-      )
-      .subscribe();
+    const subscriptions = [];
 
-    // ── Channel 2: sellers ─────────────────────────────────────────
-    const sellerChannel = supabase
-      .channel("admin-ctx-sellers")
-      .on("postgres_changes", { event: "*", schema: "public", table: "sellers" },
-        () => {
-          fetchSellers();
-          fetchHomeStats();
-        }
-      )
-      .subscribe();
+    // Channel 1: profiles
+    subscriptions.push(
+      supabase.channel("admin-ctx-profiles")
+        .on("postgres_changes", { event: "*", schema: "public", table: "profiles" },
+          () => { fetchUsers(); debouncedFetchHomeStats(); })
+        .subscribe()
+    );
 
-    // ── Channel 3: pending_changes ─────────────────────────────────
-    // FIX: Only refetch edits — does NOT affect home stats
-    const pendingChangesChannel = supabase
-      .channel("admin-ctx-pending-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "pending_changes" },
-        () => {
-          fetchSellerEdits();
-          fetchBuyerEdits();
-        }
-      )
-      .subscribe();
+    // Channel 2: sellers
+    subscriptions.push(
+      supabase.channel("admin-ctx-sellers")
+        .on("postgres_changes", { event: "*", schema: "public", table: "sellers" },
+          () => { fetchSellers(); debouncedFetchHomeStats(); })
+        .subscribe()
+    );
 
-    // ── Channel 4: pending_cnic_submissions ────────────────────────
-    const cnicChannel = supabase
-      .channel("admin-ctx-cnic-submissions")
-      .on("postgres_changes", { event: "*", schema: "public", table: "pending_cnic_submissions" },
-        () => {
-          fetchBidders();
-          fetchHomeStats();
-        }
-      )
-      .subscribe();
+    // Channel 3: pending_changes
+    subscriptions.push(
+      supabase.channel("admin-ctx-pending-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "pending_changes" },
+          () => { fetchSellerEdits(); fetchBuyerEdits(); })
+        .subscribe()
+    );
 
-    // ── Channel 5: buyers ──────────────────────────────────────────
-    const buyerChannel = supabase
-      .channel("admin-ctx-buyers")
-      .on("postgres_changes", { event: "*", schema: "public", table: "buyers" },
-        () => {
-          fetchBidders();
-          fetchHomeStats();
-        }
-      )
-      .subscribe();
+    // Channel 4: pending_cnic_submissions
+    subscriptions.push(
+      supabase.channel("admin-ctx-cnic-submissions")
+        .on("postgres_changes", { event: "*", schema: "public", table: "pending_cnic_submissions" },
+          () => { fetchBidders(); debouncedFetchHomeStats(); })
+        .subscribe()
+    );
 
-    // ── Channel 6: products ────────────────────────────────────────
-    const productChannel = supabase
-      .channel("admin-ctx-products")
-      .on("postgres_changes", { event: "*", schema: "public", table: "products" },
-        () => {
-          fetchProducts();
-          fetchHomeStats();
-        }
-      )
-      .subscribe();
+    // Channel 5: buyers
+    subscriptions.push(
+      supabase.channel("admin-ctx-buyers")
+        .on("postgres_changes", { event: "*", schema: "public", table: "buyers" },
+          () => { fetchBidders(); debouncedFetchHomeStats(); })
+        .subscribe()
+    );
 
-    // ── Channel 7: auctions ────────────────────────────────────────
-    // FIX: Uses granular update for status changes (pause/resume)
-    // so ProductDetailPage realtime pause works correctly
-    const auctionChannel = supabase
-      .channel("admin-ctx-auctions")
-      .on("postgres_changes", { event: "*", schema: "public", table: "auctions" },
-        (payload) => {
-          const { eventType, new: newRow, old } = payload;
-          const activeStatuses = ["live", "scheduled", "paused"];
+    // Channel 6: products
+    subscriptions.push(
+      supabase.channel("admin-ctx-products")
+        .on("postgres_changes", { event: "*", schema: "public", table: "products" },
+          () => { fetchProducts(); debouncedFetchHomeStats(); })
+        .subscribe()
+    );
 
-          if (eventType === "UPDATE") {
-            if (!activeStatuses.includes(newRow?.status)) {
-              // Auction ended/cancelled — remove from active list
-              setActiveAuctions((prev) => prev.filter((a) => a.id !== newRow.id));
-            } else {
-              // FIX: Merge only scalar fields — preserve joined products/sellers
-              setActiveAuctions((prev) =>
-                prev.map((a) =>
-                  a.id === newRow.id
-                    ? {
-                        ...a,
-                        status:            newRow.status,
-                        highest_bid:       newRow.highest_bid,
-                        highest_bidder_id: newRow.highest_bidder_id,
-                        winner_id:         newRow.winner_id,
-                        end_time:          newRow.end_time,
-                        paused_by:         newRow.paused_by,
-                        min_increment:     newRow.min_increment,
-                        approval_status:   newRow.approval_status,
-                      }
-                    : a
-                )
-              );
-            }
-          } else if (eventType === "INSERT" && activeStatuses.includes(newRow?.status)) {
-            // New active auction — fetch with joins then add
-            supabase.from("auctions")
-              .select(`*, products ( title, reserved_price ), sellers ( id, user_id, business_name, profiles ( id, name ) )`)
-              .eq("id", newRow.id)
-              .single()
-              .then(({ data }) => {
-                if (data) setActiveAuctions((prev) => [data, ...prev]);
-              });
-          } else if (eventType === "DELETE") {
-            setActiveAuctions((prev) => prev.filter((a) => a.id !== old?.id));
-          }
+    // Channel 7: auctions — granular update preserving joined data
+    subscriptions.push(
+      supabase.channel("admin-ctx-auctions")
+        .on("postgres_changes", { event: "*", schema: "public", table: "auctions" },
+          async (payload) => {
+            const { eventType, new: newRow, old } = payload;
+            const activeStatuses = ["live", "scheduled", "paused"];
 
-          fetchHomeStats();
-        }
-      )
-      .subscribe();
-
-    // ── Channel 8: bids ────────────────────────────────────────────
-    // FIX: Only update suspicious bids list — NOT a full re-fetch
-    const bidChannel = supabase
-      .channel("admin-ctx-bids")
-      .on("postgres_changes", { event: "*", schema: "public", table: "bids" },
-        (payload) => {
-          const { eventType, new: newRow, old } = payload;
-
-          if (eventType === "INSERT" && newRow?.is_suspicious && newRow?.status === "active") {
-            // New suspicious bid — fetch with joins then prepend
-            supabase.from("bids")
-              .select(`*, auctions ( id, products ( title ) ), buyers ( id, profiles ( name ) )`)
-              .eq("id", newRow.id)
-              .single()
-              .then(({ data }) => {
-                if (data) setSuspiciousBids((prev) => [data, ...prev]);
-              });
-          } else if (eventType === "UPDATE") {
-            if (!newRow?.is_suspicious || newRow?.status !== "active") {
-              setSuspiciousBids((prev) => prev.filter((b) => b.id !== newRow?.id));
-            }
-          } else if (eventType === "DELETE") {
-            setSuspiciousBids((prev) => prev.filter((b) => b.id !== old?.id));
-          }
-
-          // FIX: Only update home stats totalBids counter
-          // Do NOT call fetchHomeStats() here — too frequent during live auctions
-          // Instead update the count locally
-          setHomeStats((prev) => ({
-            ...prev,
-            totalBids: eventType === "INSERT"
-              ? prev.totalBids + 1
-              : eventType === "DELETE"
-              ? Math.max(0, prev.totalBids - 1)
-              : prev.totalBids,
-          }));
-        }
-      )
-      .subscribe();
-
-    // ── Channel 9: orders ──────────────────────────────────────────
-    // FIX: Fetch full row with joins when order changes
-    // instead of a full re-fetch of all orders
-    const orderChannel = supabase
-      .channel("admin-ctx-orders")
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" },
-        (payload) => {
-          const { eventType, new: newRow, old } = payload;
-          if (eventType === "INSERT" || eventType === "UPDATE") {
-            supabase.from("orders")
-              .select(`
-                *,
-                auctions ( id, products ( title ) ),
-                buyers ( id, profiles ( name ) ),
-                sellers ( id, business_name, user_id, profiles ( id, name ) ),
-                payments ( id, status, total_amount, payment_date ),
-                deliveries ( id, status, tracking_no, courier_service, delivery_date )
-              `)
-              .eq("id", newRow.id)
-              .single()
-              .then(({ data }) => {
-                if (!data) return;
-                if (eventType === "INSERT") {
-                  setOrders((prev) => [data, ...prev]);
+            if (eventType === "UPDATE") {
+              if (!activeStatuses.includes(newRow?.status)) {
+                setActiveAuctions((prev) => prev.filter((a) => a.id !== newRow.id));
+              } else {
+                const joinedAuction = await fetchJoinedAuction(newRow.id);
+                if (joinedAuction) {
+                  setActiveAuctions((prev) =>
+                    prev.map((a) => a.id === newRow.id ? joinedAuction : a)
+                  );
                 } else {
-                  setOrders((prev) => prev.map((o) => o.id === data.id ? data : o));
+                  // Fallback: merge scalar fields only
+                  setActiveAuctions((prev) =>
+                    prev.map((a) => a.id === newRow.id ? {
+                      ...a,
+                      status: newRow.status,
+                      highest_bid: newRow.highest_bid,
+                      highest_bidder_id: newRow.highest_bidder_id,
+                      winner_id: newRow.winner_id,
+                      end_time: newRow.end_time,
+                      paused_by: newRow.paused_by,
+                      min_increment: newRow.min_increment,
+                      approval_status: newRow.approval_status,
+                    } : a)
+                  );
                 }
-              });
-          } else if (eventType === "DELETE") {
-            setOrders((prev) => prev.filter((o) => o.id !== old?.id));
+              }
+            } else if (eventType === "INSERT" && activeStatuses.includes(newRow?.status)) {
+              const joinedAuction = await fetchJoinedAuction(newRow.id);
+              if (joinedAuction) setActiveAuctions((prev) => [joinedAuction, ...prev]);
+            } else if (eventType === "DELETE") {
+              setActiveAuctions((prev) => prev.filter((a) => a.id !== old?.id));
+            }
+
+            debouncedFetchHomeStats();
           }
-        }
-      )
-      .subscribe();
+        )
+        .subscribe()
+    );
 
-    // ── Channel 10: deliveries ─────────────────────────────────────
-    // FIX: When delivery changes, re-fetch the parent order
-    // so the orders table shows updated delivery status immediately
-    const deliveryChannel = supabase
-      .channel("admin-ctx-deliveries")
-      .on("postgres_changes", { event: "*", schema: "public", table: "deliveries" },
-        (payload) => {
-          const orderId = payload.new?.order_id || payload.old?.order_id;
-          if (!orderId) return;
+    // Channel 8: bids
+    subscriptions.push(
+      supabase.channel("admin-ctx-bids")
+        .on("postgres_changes", { event: "*", schema: "public", table: "bids" },
+          async (payload) => {
+            const { eventType, new: newRow, old } = payload;
 
-          supabase.from("orders")
-            .select(`
-              *,
-              auctions ( id, products ( title ) ),
-              buyers ( id, profiles ( name ) ),
-              sellers ( id, business_name, user_id, profiles ( id, name ) ),
-              payments ( id, status, total_amount, payment_date ),
-              deliveries ( id, status, tracking_no, courier_service, delivery_date )
-            `)
-            .eq("id", orderId)
-            .single()
-            .then(({ data }) => {
-              if (data) setOrders((prev) => prev.map((o) => o.id === data.id ? data : o));
-            });
-        }
-      )
-      .subscribe();
+            if (eventType === "INSERT" && newRow?.is_suspicious && newRow?.status === "active") {
+              const joinedBid = await fetchJoinedSuspiciousBid(newRow.id);
+              if (joinedBid) setSuspiciousBids((prev) => [joinedBid, ...prev]);
+            } else if (eventType === "UPDATE") {
+              if (
+                !newRow?.is_suspicious ||
+                newRow?.status !== "active"
+              ) {
+                setSuspiciousBids((prev) =>
+                  prev.filter((b) => b.id !== newRow.id)
+                );
+              } else {
+                const joinedBid =
+                  await fetchJoinedSuspiciousBid(newRow.id);
 
-    // ── Channel 11: transactions ───────────────────────────────────
-    // FIX: Granular update — move transaction between pending/released lists
-    const transactionChannel = supabase
-      .channel("admin-ctx-transactions")
-      .on("postgres_changes", { event: "*", schema: "public", table: "transactions" },
-        (payload) => {
-          const { eventType, new: newRow, old } = payload;
-          if (eventType === "INSERT" || eventType === "UPDATE") {
-            supabase.from("transactions")
-              .select(`
-                *,
-                payments (
-                  id, status, payment_date, total_amount, platform_fee,
-                  orders ( id, buyers ( profiles ( name ) ), auctions ( products ( title ) ) )
-                ),
-                sellers ( id, business_name, user_id, profiles ( name ) )
-              `)
-              .eq("id", newRow.id)
-              .single()
-              .then(({ data }) => {
-                if (!data) return;
-                if (data.status === "onhold") {
-                  setReleasedTransactions((prev) => prev.filter((t) => t.id !== data.id));
+                if (joinedBid) {
+                  setSuspiciousBids((prev) =>
+                    prev.map((b) =>
+                      b.id === joinedBid.id
+                        ? joinedBid
+                        : b
+                    )
+                  );
+                }
+              }
+            } else if (eventType === "DELETE") {
+              setSuspiciousBids((prev) => prev.filter((b) => b.id !== old?.id));
+            }
+
+            debouncedFetchHomeStats();
+          }
+        )
+        .subscribe()
+    );
+
+    // Channel 9: orders
+    subscriptions.push(
+      supabase.channel("admin-ctx-orders")
+        .on("postgres_changes", { event: "*", schema: "public", table: "orders" },
+          async (payload) => {
+            const { eventType, new: newRow, old } = payload;
+            if (eventType === "INSERT" || eventType === "UPDATE") {
+              const joinedOrder = await fetchJoinedOrder(newRow.id);
+              if (joinedOrder) {
+                if (eventType === "INSERT") setOrders((prev) => [joinedOrder, ...prev]);
+                else setOrders((prev) => prev.map((o) => o.id === joinedOrder.id ? joinedOrder : o));
+              }
+            } else if (eventType === "DELETE") {
+              setOrders((prev) => prev.filter((o) => o.id !== old?.id));
+            }
+            debouncedFetchHomeStats();
+          }
+        )
+        .subscribe()
+    );
+
+    // Channel 10: deliveries — refresh parent order
+    subscriptions.push(
+      supabase.channel("admin-ctx-deliveries")
+        .on("postgres_changes", { event: "*", schema: "public", table: "deliveries" },
+          async (payload) => {
+            const orderId = payload.new?.order_id || payload.old?.order_id;
+            if (!orderId) return;
+            const joinedOrder = await fetchJoinedOrder(orderId);
+            if (joinedOrder) setOrders((prev) => prev.map((o) => o.id === joinedOrder.id ? joinedOrder : o));
+            debouncedFetchHomeStats();
+          }
+        )
+        .subscribe()
+    );
+
+    // Channel 11: transactions
+    subscriptions.push(
+      supabase.channel("admin-ctx-transactions")
+        .on("postgres_changes", { event: "*", schema: "public", table: "transactions" },
+          async (payload) => {
+            const { eventType, new: newRow, old } = payload;
+            if (eventType === "INSERT" || eventType === "UPDATE") {
+              const joinedTx = await fetchJoinedTransaction(newRow.id);
+              if (joinedTx) {
+                if (joinedTx.status === "onhold" && joinedTx.payments?.hold_status === true) {
                   setPendingTransactions((prev) => {
-                    const exists = prev.some((t) => t.id === data.id);
-                    return exists ? prev.map((t) => t.id === data.id ? data : t) : [data, ...prev];
+                    const exists = prev.some((t) => t.id === joinedTx.id);
+                    return exists
+                      ? prev.map((t) => t.id === joinedTx.id ? joinedTx : t)
+                      : [joinedTx, ...prev];
                   });
-                } else if (data.status === "released") {
-                  setPendingTransactions((prev) => prev.filter((t) => t.id !== data.id));
+                  setReleasedTransactions((prev) => prev.filter((t) => t.id !== joinedTx.id));
+                } else if (joinedTx.status === "released") {
                   setReleasedTransactions((prev) => {
-                    const exists = prev.some((t) => t.id === data.id);
-                    return exists ? prev.map((t) => t.id === data.id ? data : t) : [data, ...prev];
+                    const exists = prev.some((t) => t.id === joinedTx.id);
+                    return exists
+                      ? prev.map((t) => t.id === joinedTx.id ? joinedTx : t)
+                      : [joinedTx, ...prev];
                   });
+                  setPendingTransactions((prev) => prev.filter((t) => t.id !== joinedTx.id));
                 }
-              });
-          } else if (eventType === "DELETE") {
-            setPendingTransactions((prev) => prev.filter((t) => t.id !== old?.id));
-            setReleasedTransactions((prev) => prev.filter((t) => t.id !== old?.id));
+              }
+            } else if (eventType === "DELETE") {
+              setPendingTransactions((prev) => prev.filter((t) => t.id !== old?.id));
+              setReleasedTransactions((prev) => prev.filter((t) => t.id !== old?.id));
+            }
+            debouncedFetchHomeStats();
           }
-        }
-      )
-      .subscribe();
+        )
+        .subscribe()
+    );
 
-    // ── Channel 12: payments ───────────────────────────────────────
-    // FIX: Only refresh revenue when payments change
-    // NOT home stats — payments rarely change
-    const paymentChannel = supabase
-      .channel("admin-ctx-payments")
-      .on("postgres_changes", { event: "*", schema: "public", table: "payments" },
-        () => fetchRevenue()
-      )
-      .subscribe();
+    // Channel 12: payments — refresh revenue when any payment changes
+    subscriptions.push(
+      supabase.channel("admin-ctx-payments")
+        .on("postgres_changes", { event: "*", schema: "public", table: "payments" },
+          () => {
+            fetchRevenue();
+            fetchOrders();
+            debouncedFetchHomeStats();
+          })
+        .subscribe()
+    );
 
-    // Store all channels for cleanup
-    channelsRef.current = [
-      userChannel, sellerChannel, pendingChangesChannel,
-      cnicChannel, buyerChannel, productChannel,
-      auctionChannel, bidChannel, orderChannel,
-      deliveryChannel, transactionChannel, paymentChannel,
-    ];
+    channelsRef.current = subscriptions;
 
-    // Cleanup on unmount
     return () => {
+      if (homeStatsTimeoutRef.current) clearTimeout(homeStatsTimeoutRef.current);
       channelsRef.current.forEach((ch) => {
-        try { supabase.removeChannel(ch); } catch (_) {}
+        try { supabase.removeChannel(ch); } catch (err) { console.error("removeChannel error:", err); }
       });
       channelsRef.current = [];
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Intentionally empty — all fetch functions are stable useCallbacks
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─────────────────────────────────────────────────────────────────
   // CONTEXT VALUE
@@ -700,48 +948,40 @@ export const AdminProvider = ({ children }) => {
 
   return (
     <AdminContext.Provider value={{
-      // Users
       users, usersLoading,
       refetchUsers: fetchUsers,
       updateUserLocally,
 
-      // Sellers
       sellers, sellersLoading,
       pendingSellerEdits, sellerEditsLoading,
       refetchSellers: fetchSellers,
       refetchSellerEdits: fetchSellerEdits,
 
-      // Bidders
       pendingSubmissions, rejectedSubmissions, approvedBuyers,
       biddersLoading,
       pendingBuyerEdits, buyerEditsLoading,
       refetchBidders: fetchBidders,
       refetchBuyerEdits: fetchBuyerEdits,
 
-      // Products
       pendingProducts, approvedProducts, rejectedProducts,
       productsLoading,
       refetchProducts: fetchProducts,
 
-      // Auctions
       activeAuctions, suspiciousBids,
       auctionsLoading,
       refetchAuctions: fetchAuctions,
       updateAuctionLocally,
       removeSuspiciousBid,
 
-      // Orders
       orders, ordersLoading,
       refetchOrders: fetchOrders,
 
-      // Revenue
       pendingTransactions, releasedTransactions, payments,
       revenueLoading,
       refetchRevenue: fetchRevenue,
       updateTransactionLocally,
 
-      // Home stats
-      homeStats, homeLoading,
+      homeStats, homeLoading, homeStatsError,
       refetchHomeStats: fetchHomeStats,
     }}>
       {children}

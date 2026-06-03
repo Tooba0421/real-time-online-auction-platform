@@ -36,7 +36,7 @@ const faqData = [
     {
         question: "What payment methods are accepted?",
         answer:
-            "We support secure payment methods such as Visa."
+            "We support secure payment methods such as card."
     },
     {
         question: "Is my payment secure?",

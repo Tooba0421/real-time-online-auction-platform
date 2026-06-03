@@ -17,64 +17,92 @@ const UserManagement = () => {
   const { user: adminUser } = useAuthContext();
   const { users, usersLoading, updateUserLocally } = useAdminContext();
 
-  const [searchTerm, setSearchTerm] = useState("");
-  const [roleFilter, setRoleFilter] = useState("All");
+  const [searchTerm,   setSearchTerm]   = useState("");
+  const [roleFilter,   setRoleFilter]   = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
-  const [suspending, setSuspending] = useState(null);
+  const [processing,   setProcessing]   = useState(null);
+  const [banModal,     setBanModal]     = useState(null);
+  const [banReason,    setBanReason]    = useState("");
 
-  const handleToggleStatus = async (userId, currentStatus) => {
-    const newStatus = currentStatus === "active" ? "suspended" : "active";
-    const action = newStatus === "suspended" ? "suspend" : "activate";
-    if (!window.confirm(`Are you sure you want to ${action} this user?`)) return;
+  const handleBanToggle = async () => {
+    if (!banReason.trim()) {
+      toast.error("Please write a reason");
+      return;
+    }
+
+    const targetUser = banModal;
+    const isBanned   = targetUser.status === "banned";
+    const newStatus  = isBanned ? "active" : "banned";
+
+    setProcessing(targetUser.id);
 
     try {
-      setSuspending(userId);
-
-      // Optimistic update — UI responds immediately
-      updateUserLocally(userId, { status: newStatus });
-
-      const { error } = await supabase
+      // ── Step 1: Update profile status ──────────────────────────
+      const { error: updateError } = await supabase
         .from("profiles")
         .update({ status: newStatus })
-        .eq("id", userId);
+        .eq("id", targetUser.id);
 
-      if (error) {
-        // Rollback on failure
-        updateUserLocally(userId, { status: currentStatus });
-        toast.error(`Error ${action}ing user`);
+      if (updateError) {
+        toast.error(`Error updating user: ${updateError.message}`);
+        console.error("Profile update error:", updateError);
         return;
       }
 
-      // Fire-and-forget: audit log + notification in parallel
-      await Promise.all([
-        supabase.from("admin_actions").insert({
-          admin_id: adminUser.id,
-          action_type: newStatus === "suspended" ? "suspend" : "approve",
-          target_id: userId,
-          target_table: "profiles",
-          remarks: newStatus === "suspended"
-            ? "User account suspended by admin"
-            : "User account reactivated by admin",
-        }),
-        supabase.from("notifications").insert({
-          user_id: userId,
-          title: newStatus === "suspended" ? "Account Suspended" : "Account Activated",
-          message: newStatus === "suspended"
-            ? "Your account has been suspended by admin."
-            : "Your account has been reactivated by admin.",
-          type: "approval",
-          notification_for: "buyer",
-          is_read: false,
-        }),
-      ]);
+      // ── Step 2: Optimistic local update ────────────────────────
+      updateUserLocally(targetUser.id, { status: newStatus });
 
-      toast.success(`User ${action}d successfully`);
+      // ── Step 3: Log admin action ────────────────────────────────
+      try {
+        const { error: actionError } = await supabase
+          .from("admin_actions")
+          .insert({
+            admin_id:     adminUser.id,
+            action_type:  isBanned ? "unban" : "ban",
+            target_id:    targetUser.id,
+            target_table: "profiles",
+            remarks:      banReason.trim(),
+          });
+
+        if (actionError) {
+          console.error("Admin action log error:", actionError);
+        }
+      } catch (logErr) {
+        console.error("Admin action log exception:", logErr);
+      }
+
+      // ── Step 4: Notify user ─────────────────────────────────────
+      // notification_for enum: 'buyer' | 'seller' | 'admin'
+      const notifFor =
+        targetUser.role === "seller" ? "seller" :
+        targetUser.role === "admin"  ? null     : "buyer";
+
+      if (notifFor) {
+        try {
+          await supabase.from("notifications").insert({
+            user_id:          targetUser.id,
+            title:            isBanned ? "Account Restored" : "Account Banned",
+            message:          isBanned
+              ? `Your account has been restored. Reason: ${banReason.trim()}`
+              : `Your account has been banned. Reason: ${banReason.trim()}`,
+            type:             "approval",
+            notification_for: notifFor,
+            is_read:          false,
+          });
+        } catch (notifErr) {
+          console.error("Notification exception:", notifErr);
+        }
+      }
+
+      toast.success(`User ${isBanned ? "unbanned" : "banned"} successfully`);
+      setBanModal(null);
+      setBanReason("");
+
     } catch (err) {
-      console.error(err);
-      updateUserLocally(userId, { status: currentStatus });
-      toast.error("Something went wrong");
+      console.error("Unexpected error:", err);
+      toast.error("Something went wrong. Please try again.");
     } finally {
-      setSuspending(null);
+      setProcessing(null);
     }
   };
 
@@ -82,20 +110,20 @@ const UserManagement = () => {
     const q = searchTerm.toLowerCase();
     return users.filter((u) => {
       const matchSearch =
-        u.name?.toLowerCase().includes(q) ||
+        u.name?.toLowerCase().includes(q)  ||
         u.email?.toLowerCase().includes(q) ||
         u.id?.toLowerCase().includes(q);
-      const matchRole   = roleFilter   === "All" || u.role   === roleFilter.toLowerCase();
+      const matchRole   = roleFilter   === "All" || u.role?.toLowerCase()   === roleFilter.toLowerCase();
       const matchStatus = statusFilter === "All" || u.status?.toLowerCase() === statusFilter.toLowerCase();
       return matchSearch && matchRole && matchStatus;
     });
   }, [users, searchTerm, roleFilter, statusFilter]);
 
   const statsData = [
-    { title: "Total Users",        value: usersLoading ? "..." : users.length,                                         subtitle: "All registered users" },
-    { title: "Total Sellers",      value: usersLoading ? "..." : users.filter((u) => u.role === "seller").length,      subtitle: "Can list auctions" },
-    { title: "Total Buyers",       value: usersLoading ? "..." : users.filter((u) => u.role === "buyer").length,       subtitle: "Can place bids" },
-    { title: "Suspended Accounts", value: usersLoading ? "..." : users.filter((u) => u.status === "suspended").length, subtitle: "Restricted accounts" },
+    { title: "Total Users",   value: usersLoading ? "..." : users.length,                                      subtitle: "All registered users" },
+    { title: "Total Sellers", value: usersLoading ? "..." : users.filter((u) => u.role === "seller").length,   subtitle: "Can list auctions" },
+    { title: "Total Buyers",  value: usersLoading ? "..." : users.filter((u) => u.role === "buyer").length,    subtitle: "Can place bids" },
+    { title: "Banned",        value: usersLoading ? "..." : users.filter((u) => u.status === "banned").length, subtitle: "Banned accounts" },
   ];
 
   const userRoleData = useMemo(() => ({
@@ -111,15 +139,34 @@ const UserManagement = () => {
     }],
   }), [users]);
 
-  const formatDate = (d) => {
-    if (!d) return "—";
-    return new Date(d).toLocaleDateString("en-PK", {
-      year: "numeric", month: "short", day: "numeric",
-    });
+  const doughnutOptions = {
+    responsive: true, maintainAspectRatio: false, cutout: "0%",
+    layout: { padding: { top: 10, bottom: 30 } },
+    plugins: {
+      legend: { position: "top", align: "center", labels: { boxWidth: 30, padding: 15 } },
+    },
+  };
+
+  const formatDate = (d) => !d ? "—" : new Date(d).toLocaleDateString("en-PK", {
+    year: "numeric", month: "short", day: "numeric",
+  });
+
+  const getStatusLabel = (status) => {
+    if (status === "active")   return "Active";
+    if (status === "inactive") return "Inactive";
+    if (status === "banned")   return "Banned";
+    return status || "—";
+  };
+
+  const getStatusType = (status) => {
+    if (status === "active") return "active";
+    if (status === "banned") return "rejected"; // red badge
+    return "pending";
   };
 
   return (
     <div className="admin-page">
+
       <div className="stats-grid">
         {statsData.map((item, i) => (
           <StatCard key={i} title={item.title} value={item.value} subtitle={item.subtitle} />
@@ -128,6 +175,7 @@ const UserManagement = () => {
 
       <div className="admin-section">
         <h3 className="admin-section-heading">All Users</h3>
+
         <div className="admin-controls">
           <input
             type="text"
@@ -137,15 +185,16 @@ const UserManagement = () => {
           />
           <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
             <option value="All">All Roles</option>
-            <option value="User">User</option>
-            <option value="Buyer">Buyer</option>
-            <option value="Seller">Seller</option>
-            <option value="Admin">Admin</option>
+            <option value="user">User</option>
+            <option value="buyer">Buyer</option>
+            <option value="seller">Seller</option>
+            <option value="admin">Admin</option>
           </select>
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="All">All Status</option>
-            <option value="Active">Active</option>
-            <option value="Suspended">Suspended</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="banned">Banned</option>
           </select>
         </div>
 
@@ -167,10 +216,12 @@ const UserManagement = () => {
               </thead>
               <tbody>
                 {filteredUsers.length === 0 ? (
-                  <tr><td colSpan="7" className="no-data">No users found</td></tr>
+                  <tr>
+                    <td colSpan="7" className="no-data">No users found</td>
+                  </tr>
                 ) : filteredUsers.map((u) => (
                   <tr key={u.id}>
-                    <td>{u.name || "—"}</td>
+                    <td>{u.name  || "—"}</td>
                     <td>{u.email || "—"}</td>
                     <td>
                       <StatusBadge
@@ -181,38 +232,42 @@ const UserManagement = () => {
                     <td>
                       <StatusBadge
                         label={
-                          u.id_verified === "approved" ? "Verified"      :
-                          u.id_verified === "pending"  ? "Pending"       :
-                          u.id_verified === "rejected" ? "Rejected"      : "Not Submitted"
+                          u.id_verified === "approved" ? "Verified"       :
+                          u.id_verified === "pending"  ? "Pending"        :
+                          u.id_verified === "rejected" ? "Rejected"       : "Not Submitted"
                         }
                         type={
-                          u.id_verified === "approved" ? "approved"      :
-                          u.id_verified === "pending"  ? "pending"       :
-                          u.id_verified === "rejected" ? "rejected"      : "not_submitted"
+                          u.id_verified === "approved" ? "approved"       :
+                          u.id_verified === "pending"  ? "pending"        :
+                          u.id_verified === "rejected" ? "rejected"       : "pending"
                         }
                       />
                     </td>
                     <td>
                       <StatusBadge
-                        label={u.status === "active" ? "Active" : "Suspended"}
-                        type={u.status === "active" ? "active" : "suspended"}
+                        label={getStatusLabel(u.status)}
+                        type={getStatusType(u.status)}
                       />
                     </td>
                     <td>{formatDate(u.join_date)}</td>
                     <td className="actions">
-                      {u.role !== "admin" && (
+                      {/* No action for admins or inactive users */}
+                      {u.role !== "admin" && u.status !== "inactive" && (
                         <ActionButton
-                          label={u.status === "active" ? "Suspend" : "Activate"}
+                          label={u.status === "active" ? "Ban" : "Unban"}
                           variant={u.status === "active" ? "danger" : "success"}
-                          onClick={() => handleToggleStatus(u.id, u.status)}
-                          disabled={suspending === u.id}
+                          onClick={() => { setBanModal(u); setBanReason(""); }}
+                          disabled={processing === u.id}
                         />
+                      )}
+                      {u.status === "inactive" && (
+                        <span style={{ color: "#f59e0b", fontSize: "12px" }}>Inactive</span>
                       )}
                     </td>
                   </tr>
                 ))}
               </tbody>
-            </table>{/* ✅ Fix: was </tabl\ne> — broken JSX that caused a parse error */}
+            </table>
           </div>
         )}
       </div>
@@ -221,25 +276,60 @@ const UserManagement = () => {
         <div className="chart-box">
           <h3 className="admin-section-heading">User Distribution</h3>
           <div className="chart-container">
-            <Doughnut
-              data={userRoleData}
-              options={{
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: "0%",
-                layout: { padding: { top: 10, bottom: 30 } },
-                plugins: {
-                  legend: {
-                    position: "top",
-                    align: "center",
-                    labels: { boxWidth: 30, padding: 15 },
-                  },
-                },
-              }}
-            />
+            <Doughnut data={userRoleData} options={doughnutOptions} />
           </div>
         </div>
       </div>
+
+      {/* Ban / Unban Modal */}
+      {banModal && (
+        <div
+          className="reason-modal-overlay"
+          onClick={() => { setBanModal(null); setBanReason(""); }}
+        >
+          <div className="reason-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{banModal.status === "active" ? "Ban User" : "Unban User"}</h3>
+
+            <div className="modal-user-info">
+              <p><strong>Name:</strong>   {banModal.name  || "—"}</p>
+              <p><strong>Email:</strong>  {banModal.email || "—"}</p>
+              <p><strong>Role:</strong>   {banModal.role}</p>
+              <p><strong>Status:</strong> {getStatusLabel(banModal.status)}</p>
+            </div>
+
+            <textarea
+              placeholder={
+                banModal.status === "active"
+                  ? "Reason for banning this user (e.g. suspicious activity, policy violation)..."
+                  : "Reason for unbanning this user..."
+              }
+              value={banReason}
+              onChange={(e) => setBanReason(e.target.value)}
+              rows="4"
+            />
+
+            <div className="modal-actions">
+              <button
+                className="cancel"
+                onClick={() => { setBanModal(null); setBanReason(""); }}
+                disabled={processing === banModal?.id}
+              >
+                Cancel
+              </button>
+              <button
+                className="confirm"
+                onClick={handleBanToggle}
+                disabled={processing === banModal?.id}
+              >
+                {processing === banModal?.id
+                  ? "Processing..."
+                  : banModal.status === "active" ? "Ban User" : "Unban User"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

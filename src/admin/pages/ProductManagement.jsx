@@ -23,138 +23,156 @@ const ProductManagement = () => {
     refetchProducts,
   } = useAdminContext();
 
-  const [selectedImages, setSelectedImages] = useState(null);
+  const [selectedImages,  setSelectedImages]  = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [reasonText, setReasonText] = useState("");
-  const [processing, setProcessing] = useState(false);
+  const [reasonText,      setReasonText]      = useState("");
 
-  // ── Approve product + auction ─────────────────────────────────────
+  // FIX: processing stores product ID, not boolean
+  // Prevents all buttons from disabling when one action runs
+  const [processing, setProcessing] = useState(null);
+  const [imageError,  setImageError]  = useState({});
+
+  // ── Log admin action ──────────────────────────────────────────────
+  const logAdminAction = async (actionType, targetId, remarks) => {
+    try {
+      await supabase.from("admin_actions").insert({
+        admin_id:     user.id,
+        action_type:  actionType,
+        target_id:    targetId,
+        target_table: "products",
+        remarks:      remarks,
+      });
+    } catch (err) {
+      console.error("Admin log error (non-critical):", err);
+    }
+  };
+
+  // ── Send notification to seller ───────────────────────────────────
+  const sendSellerNotification = async (sellerId, title, message) => {
+    if (!sellerId) return;
+    try {
+      await supabase.from("notifications").insert({
+        user_id:          sellerId,
+        title:            title,
+        message:          message,
+        type:             "approval",
+        notification_for: "seller",
+        is_read:          false,
+      });
+    } catch (err) {
+      console.error("Notification error (non-critical):", err);
+    }
+  };
+
+  // ── Approve product + linked auction ─────────────────────────────
   const handleApprove = async (product) => {
     try {
-      setProcessing(true);
+      // FIX: use product.id not true
+      setProcessing(product.id);
 
-      // Update product status
       const { error: productErr } = await supabase
         .from("products")
         .update({ status: "active" })
         .eq("id", product.id);
 
       if (productErr) {
-        // ✅ Log exact error so we can diagnose RLS issues
-        console.error("Product approve error:", productErr);
         toast.error(`Error approving product: ${productErr.message}`);
+        console.error("Product approve error:", productErr);
         return;
       }
 
-      // Update linked auction
       const { error: auctionErr } = await supabase
         .from("auctions")
         .update({ approval_status: "approved", status: "scheduled" })
         .eq("product_id", product.id);
 
       if (auctionErr) {
-        console.error("Auction approve error:", auctionErr);
+        // Rollback product status
+        await supabase.from("products").update({ status: "pending" }).eq("id", product.id);
         toast.error(`Error approving auction: ${auctionErr.message}`);
+        console.error("Auction approve error:", auctionErr);
         return;
       }
 
-      // Non-critical: audit log + seller notification
-      await Promise.all([
-        supabase.from("admin_actions").insert({
-          admin_id:     user.id,
-          action_type:  "approve",
-          target_id:    product.id,
-          target_table: "products",
-          remarks:      "Product and auction approved by admin",
-        }).catch((e) => console.error("Admin log error (non-critical):", e)),
-
-        product.sellerId
-          ? supabase.from("notifications").insert({
-              user_id:          product.sellerId,
-              title:            "Product Approved! 🎉",
-              message:          `Your product "${product.title}" has been approved and the auction is now scheduled.`,
-              type:             "approval",
-              notification_for: "seller",
-              is_read:          false,
-            }).catch((e) => console.error("Notification error (non-critical):", e))
-          : Promise.resolve(),
-      ]);
+      await logAdminAction("approve", product.id, "Product and auction approved by admin");
+      await sendSellerNotification(
+        product.sellerId,
+        "Product Approved! 🎉",
+        `Your product "${product.title}" has been approved and the auction is now scheduled.`
+      );
 
       toast.success(`"${product.title}" approved!`);
-      setTimeout(() => refetchProducts(), 500);
+      await refetchProducts();
 
     } catch (err) {
       console.error("handleApprove unexpected error:", err);
       toast.error(`Something went wrong: ${err.message}`);
     } finally {
-      setProcessing(false);
+      // FIX: reset to null not false
+      setProcessing(null);
     }
   };
 
-  // ── Reject product + auction ──────────────────────────────────────
+  // ── Reject product + linked auction ──────────────────────────────
   const handleConfirmReject = async () => {
     if (!reasonText.trim()) { toast.error("Please write a reason"); return; }
 
     try {
-      setProcessing(true);
+      // FIX: use selectedProduct.id not true
+      setProcessing(selectedProduct.id);
 
-      // Update product status
       const { error: productErr } = await supabase
         .from("products")
         .update({ status: "rejected" })
         .eq("id", selectedProduct.id);
 
       if (productErr) {
-        console.error("Product reject error:", productErr);
         toast.error(`Error rejecting product: ${productErr.message}`);
+        console.error("Product reject error:", productErr);
         return;
       }
 
-      // Update linked auction
       const { error: auctionErr } = await supabase
         .from("auctions")
         .update({ approval_status: "rejected" })
         .eq("product_id", selectedProduct.id);
 
       if (auctionErr) {
-        console.error("Auction reject error:", auctionErr);
+        // Rollback product status
+        await supabase.from("products").update({ status: "pending" }).eq("id", selectedProduct.id);
         toast.error(`Error rejecting auction: ${auctionErr.message}`);
+        console.error("Auction reject error:", auctionErr);
         return;
       }
 
-      // Non-critical: audit log + seller notification
-      await Promise.all([
-        supabase.from("admin_actions").insert({
-          admin_id:     user.id,
-          action_type:  "reject",
-          target_id:    selectedProduct.id,
-          target_table: "products",
-          remarks:      reasonText,
-        }).catch((e) => console.error("Admin log error (non-critical):", e)),
+      // Reason stored in admin_actions — AdminContext reads it from there
+      await logAdminAction("reject", selectedProduct.id, reasonText.trim());
 
-        selectedProduct.sellerId
-          ? supabase.from("notifications").insert({
-              user_id:          selectedProduct.sellerId,
-              title:            "Product Rejected",
-              message:          `Your product "${selectedProduct.title}" was rejected. Reason: ${reasonText}`,
-              type:             "approval",
-              notification_for: "seller",
-              is_read:          false,
-            }).catch((e) => console.error("Notification error (non-critical):", e))
-          : Promise.resolve(),
-      ]);
+      await supabase.from("notifications").insert({
+        user_id:          selectedProduct.sellerId,
+        title:            "Product Rejected",
+        message:          `Your product "${selectedProduct.title}" was rejected. Reason: ${reasonText.trim()}`,
+        type:             "approval",
+        notification_for: "seller",
+        is_read:          false,
+      });
 
       toast.success(`"${selectedProduct.title}" rejected`);
       setSelectedProduct(null);
       setReasonText("");
-      setTimeout(() => refetchProducts(), 500);
+      await refetchProducts();
 
     } catch (err) {
       console.error("handleConfirmReject unexpected error:", err);
       toast.error(`Something went wrong: ${err.message}`);
     } finally {
-      setProcessing(false);
+      // FIX: reset to null not false
+      setProcessing(null);
     }
+  };
+
+  const handleImageError = (index) => {
+    setImageError((prev) => ({ ...prev, [index]: true }));
   };
 
   const formatDate = (d) => !d ? "—" : new Date(d).toLocaleDateString("en-PK", {
@@ -196,10 +214,17 @@ const ProductManagement = () => {
       <table className="admin-table">
         <thead>
           <tr>
-            <th>Product</th><th>Category</th><th>Seller</th><th>Business</th>
-            <th>Base Price</th><th>Condition</th><th>Images</th><th>Date</th><th>Status</th>
+            <th>Product</th>
+            <th>Category</th>
+            <th>Seller</th>
+            <th>Business</th>
+            <th>Base Price</th>
+            <th>Condition</th>
+            <th>Images</th>
+            <th>Date</th>
+            <th>Status</th>
             {showActions && <th>Actions</th>}
-            {showReason  && <th>Reason</th>}
+            {showReason  && <th>Rejection Reason</th>}
           </tr>
         </thead>
         <tbody>
@@ -207,18 +232,21 @@ const ProductManagement = () => {
             ? renderEmptyRow(colSpan, "No products found.")
             : products.map((product) => (
               <tr key={product.id}>
-                <td>{product.title}</td>
-                <td>{product.category}</td>
+                <td title={product.title}>
+                  {product.title?.length > 30
+                    ? product.title.substring(0, 30) + "..."
+                    : product.title}
+                </td>
+                <td>{product.category || "—"}</td>
                 <td>{product.sellerName}</td>
                 <td>{product.businessName}</td>
-                <td>PKR {product.base_price?.toLocaleString()}</td>
+                <td>PKR {product.base_price?.toLocaleString() || 0}</td>
                 <td>{product.condition || "—"}</td>
                 <td>
-                  {/* ✅ Only show link if images exist */}
                   {product.allImages && product.allImages.length > 0 ? (
                     <span
                       className="view-image-link"
-                      onClick={() => setSelectedImages(product.allImages)}
+                      onClick={() => { setSelectedImages(product.allImages); setImageError({}); }}
                     >
                       View Images ({product.allImages.length})
                     </span>
@@ -239,22 +267,28 @@ const ProductManagement = () => {
                 {showActions && (
                   <td className="actions">
                     <ActionButton
-                      label="Approve" variant="success"
+                      label="Approve"
+                      variant="success"
                       onClick={() => handleApprove(product)}
-                      disabled={processing}
+                      // FIX: only disable THIS product's buttons
+                      disabled={processing === product.id}
                     />
                     <ActionButton
-                      label="Reject" variant="danger"
+                      label="Reject"
+                      variant="danger"
                       onClick={() => { setSelectedProduct(product); setReasonText(""); }}
-                      disabled={processing}
+                      disabled={processing === product.id}
                     />
                   </td>
                 )}
                 {showReason && (
-                  <td>
-                    <span className="long-text" title={product.reason}>
-                      {product.reason || "—"}
-                    </span>
+                  // FIX: AdminContext stores reason in product.reason not product.rejection_reason
+                  <td title={product.reason}>
+                    {product.reason
+                      ? product.reason.length > 40
+                        ? product.reason.substring(0, 40) + "..."
+                        : product.reason
+                      : "—"}
                   </td>
                 )}
               </tr>
@@ -294,20 +328,19 @@ const ProductManagement = () => {
           : renderProductTable(rejectedProducts, 10, false, true)}
       </div>
 
-      {/* ── IMAGES MODAL ── */}
+      {/* IMAGES MODAL */}
       {selectedImages && (
         <div className="image-modal-overlay" onClick={() => setSelectedImages(null)}>
           <div className="image-modal-content" onClick={(e) => e.stopPropagation()}>
             <button className="close-modal" onClick={() => setSelectedImages(null)}>✕</button>
-            {/* ✅ Null check + empty check before mapping */}
             {selectedImages.length === 0 ? (
               <p style={{ textAlign: "center", color: "#999", padding: "20px" }}>
                 No images available for this product.
               </p>
             ) : (
               <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", justifyContent: "center" }}>
-                {selectedImages.map((img, i) => (
-                  img?.image_url ? (
+                {selectedImages.map((img, i) =>
+                  img?.image_url && !imageError[i] ? (
                     <img
                       key={i}
                       src={img.image_url}
@@ -316,52 +349,59 @@ const ProductManagement = () => {
                         width: "200px", height: "200px",
                         objectFit: "cover", borderRadius: "8px",
                       }}
-                      onError={(e) => {
-                        // ✅ Handle broken image URLs gracefully
-                        e.target.style.display = "none";
-                      }}
+                      onError={() => handleImageError(i)}
                     />
                   ) : null
-                ))}
+                )}
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* ── REJECT REASON MODAL ── */}
+      {/* REJECT REASON MODAL */}
       {selectedProduct && (
-        <div className="reason-modal-overlay">
-          <div className="reason-modal">
+        <div className="reason-modal-overlay" onClick={() => { setSelectedProduct(null); setReasonText(""); }}>
+          <div className="reason-modal" onClick={(e) => e.stopPropagation()}>
             <h3>Reject Product</h3>
-            <p style={{ fontSize: "13px", color: "#666", marginBottom: "8px" }}>
+            <p style={{ fontSize: "13px", color: "#666", marginBottom: "4px" }}>
               Rejecting: <strong>{selectedProduct.title}</strong>
+            </p>
+            <p style={{ fontSize: "12px", color: "#888", marginBottom: "16px" }}>
+              Seller: {selectedProduct.sellerName} | Business: {selectedProduct.businessName}
             </p>
             <textarea
               placeholder="Write reason here..."
               value={reasonText}
               onChange={(e) => setReasonText(e.target.value)}
+              rows="4"
+              style={{
+                width: "100%", padding: "10px",
+                borderRadius: "6px", border: "1px solid #ccc",
+                marginBottom: "16px", resize: "vertical",
+              }}
             />
             <div className="modal-actions">
               <button
                 className="cancel"
                 onClick={() => { setSelectedProduct(null); setReasonText(""); }}
-                disabled={processing}
+                disabled={processing === selectedProduct.id}
               >
                 Cancel
               </button>
               <button
                 className="confirm"
                 onClick={handleConfirmReject}
-                disabled={processing}
+                disabled={processing === selectedProduct.id}
               >
-                {processing ? "Processing..." : "Confirm"}
+                {processing === selectedProduct.id ? "Processing..." : "Confirm"}
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* CHART */}
       <div className="overview-grid chart-space">
         <div className="chart-box">
           <h3 className="admin-section-heading">Product Status Overview</h3>

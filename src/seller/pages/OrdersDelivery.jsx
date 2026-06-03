@@ -303,7 +303,7 @@ const OrdersDelivery = () => {
                         type={o.payments?.status  || "pending"}
                       />
                     </td>
-                    <td className="actions-cell">
+                    <td className="actions">
                       <ActionButton
                         label="Enter Tracking No"
                         variant="secondary"
@@ -371,7 +371,7 @@ const OrdersDelivery = () => {
                         />
                       </td>
                       <td>{formatDate(o.deliveries?.created_at || o.order_date)}</td>
-                      <td className="actions-cell">
+                      <td className="actions">
                         {deliveryStatus === "shipped" && (
                           <ActionButton
                             label="Mark In Transit"

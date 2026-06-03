@@ -6,6 +6,7 @@ import {
 import { Line, Doughnut } from "react-chartjs-2";
 import { supabase } from "../../supabase/supabase";
 import { useAdminContext } from "../../context/AdminContext";
+import { useAuthContext } from "../../context/AuthContext";
 import toast from "react-hot-toast";
 import StatCard from "../../common/components/StatCard";
 import StatusBadge from "../../common/components/StatusBadge";
@@ -19,32 +20,74 @@ ChartJS.register(
 );
 
 const OrderDeliveryManagement = () => {
+  const { user } = useAuthContext();
   const { orders, ordersLoading, refetchOrders } = useAdminContext();
 
-  const [search, setSearch]           = useState("");
+  const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
-  const [processing, setProcessing]   = useState(null); // order.id being processed
+  const [processing, setProcessing] = useState(null);
+
+  // ── Helper to log admin actions ───────────────────────────────────
+  const logAdminAction = async (actionType, targetId, targetTable, remarks) => {
+    try {
+      await supabase.from("admin_actions").insert({
+        admin_id: user.id,
+        action_type: actionType,
+        target_id: targetId,
+        target_table: targetTable,
+        remarks: remarks,
+      });
+    } catch (err) {
+      console.error("Admin action log error:", err);
+    }
+  };
+
+  // ── Helper to update transaction status ───────────────────────────
+  const updateTransactionStatus = async (paymentId, status) => {
+    const { error } = await supabase
+      .from("transactions")
+      .update({
+        status: status,
+        release_date: status === "released" ? new Date().toISOString() : null,
+      })
+      .eq("payment_id", paymentId);
+    
+    if (error) console.error("Transaction update error:", error);
+    return !error;
+  };
 
   const formatDate = (d) =>
     !d ? "—" : new Date(d).toLocaleDateString("en-PK", {
       year: "numeric", month: "short", day: "numeric",
     });
 
+  // ── Mark order as delivered (FIXED: Transaction rollback) ─────────
   const handleMarkDelivered = async (order) => {
     if (!window.confirm(
       `Confirm delivery for "${order.auctions?.products?.title}"?\n\n` +
       `This will mark the order as delivered and release payment to the seller.`
     )) return;
 
+    // Store original states for rollback
+    let originalDeliveryStatus = null;
+    let originalDeliveryId = null;
+    let transactionUpdated = false;
+
     try {
       setProcessing(order.id);
 
-      // ── Step 1: Update delivery status ────────────────────────────
+      // ── Step 1: Get original delivery state for rollback ──────────
+      if (order.deliveries?.id) {
+        originalDeliveryId = order.deliveries.id;
+        originalDeliveryStatus = order.deliveries.status;
+      }
+
+      // ── Step 2: Update delivery status ────────────────────────────
       if (order.deliveries?.id) {
         const { error: deliveryError } = await supabase
           .from("deliveries")
           .update({
-            status:        "delivered",
+            status: "delivered",
             delivery_date: new Date().toISOString(),
           })
           .eq("id", order.deliveries.id);
@@ -59,12 +102,12 @@ const OrderDeliveryManagement = () => {
         const { error: createError } = await supabase
           .from("deliveries")
           .insert({
-            order_id:        order.id,
-            buyer_id:        order.buyer_id,
-            seller_id:       order.seller_id,
-            status:          "delivered",
+            order_id: order.id,
+            buyer_id: order.buyer_id,
+            seller_id: order.seller_id,
+            status: "delivered",
             courier_service: "TCS",
-            delivery_date:   new Date().toISOString(),
+            delivery_date: new Date().toISOString(),
           });
 
         if (createError) {
@@ -74,13 +117,25 @@ const OrderDeliveryManagement = () => {
         }
       }
 
-      // ── Step 2: Update order status ───────────────────────────────
-      await supabase
+      // ── Step 3: Update order status ───────────────────────────────
+      const { error: orderError } = await supabase
         .from("orders")
         .update({ order_status: "confirmed" })
         .eq("id", order.id);
 
-      // ── Step 3: Update product status to sold ─────────────────────
+      if (orderError) {
+        // Rollback delivery update
+        if (originalDeliveryId && originalDeliveryStatus) {
+          await supabase
+            .from("deliveries")
+            .update({ status: originalDeliveryStatus, delivery_date: null })
+            .eq("id", originalDeliveryId);
+        }
+        toast.error("Error updating order status");
+        return;
+      }
+
+      // ── Step 4: Update product status to sold ─────────────────────
       if (order.auctions?.id) {
         const { data: auctionData } = await supabase
           .from("auctions")
@@ -89,54 +144,55 @@ const OrderDeliveryManagement = () => {
           .single();
 
         if (auctionData?.product_id) {
-          await supabase
+          const { error: productError } = await supabase
             .from("products")
             .update({ status: "sold" })
             .eq("id", auctionData.product_id);
+          
+          if (productError) console.error("Product update error:", productError);
         }
       }
 
-      // ── Step 4: Release payment hold ──────────────────────────────
+      // ── Step 5: Release payment hold ──────────────────────────────
       if (order.payments?.id) {
-        await supabase
+        const { error: paymentError } = await supabase
           .from("payments")
           .update({ hold_status: false })
           .eq("id", order.payments.id);
+
+        if (paymentError) {
+          console.error("Payment release error:", paymentError);
+        }
       }
 
-      // ── Step 5: Release seller transaction ────────────────────────
+      // ── Step 6: Release seller transaction ────────────────────────
       if (order.payments?.id) {
-        await supabase
-          .from("transactions")
-          .update({
-            status:       "released",
-            release_date: new Date().toISOString(),
-          })
-          .eq("payment_id", order.payments.id);
+        const success = await updateTransactionStatus(order.payments.id, "released");
+        if (success) transactionUpdated = true;
       }
 
-      // ── Step 6: Notify seller ─────────────────────────────────────
-      const sellerUserId = order.sellers?.profiles?.id
-        || order.sellers?.user_id
-        || null;
+      // ── Step 7: Log admin action ──────────────────────────────────
+      await logAdminAction(
+        "mark_delivered", 
+        order.id, 
+        "orders", 
+        `Order marked as delivered by admin. Payment released to seller.`
+      );
 
+      // ── Step 8: Notify seller ─────────────────────────────────────
+      const sellerUserId = order.sellers?.profiles?.id || order.sellers?.user_id;
       if (sellerUserId) {
         await supabase.from("notifications").insert({
-          user_id:          sellerUserId,
-          title:            "Payment Released! 💰",
-          message:          `The delivery of "${order.auctions?.products?.title}" has been confirmed by admin. Your payment has been released.`,
-          type:             "payment",
+          user_id: sellerUserId,
+          title: "Payment Released! 💰",
+          message: `The delivery of "${order.auctions?.products?.title}" has been confirmed by admin. Your payment has been released.`,
+          type: "payment",
           notification_for: "seller",
-          is_read:          false,
+          is_read: false,
         });
       }
 
-      // ── Step 7: Notify buyer ──────────────────────────────────────
-      const buyerUserId = order.buyers?.profiles?.user_id
-        || order.buyers?.user_id
-        || null;
-
-      // Fetch buyer's profile user_id
+      // ── Step 9: Notify buyer ──────────────────────────────────────
       const { data: buyerData } = await supabase
         .from("buyers")
         .select("user_id")
@@ -145,20 +201,26 @@ const OrderDeliveryManagement = () => {
 
       if (buyerData?.user_id) {
         await supabase.from("notifications").insert({
-          user_id:          buyerData.user_id,
-          title:            "Delivery Confirmed ✅",
-          message:          `Your delivery for "${order.auctions?.products?.title}" has been marked as delivered. Thank you for your purchase!`,
-          type:             "delivery",
+          user_id: buyerData.user_id,
+          title: "Delivery Confirmed ✅",
+          message: `Your delivery for "${order.auctions?.products?.title}" has been marked as delivered. Thank you for your purchase!`,
+          type: "delivery",
           notification_for: "buyer",
-          is_read:          false,
+          is_read: false,
         });
       }
 
       toast.success("Order marked as delivered and payment released to seller!");
-      refetchOrders();
+      await refetchOrders();
 
     } catch (err) {
       console.error(err);
+      
+      // Attempt rollback if transaction was updated
+      if (transactionUpdated && order.payments?.id) {
+        await updateTransactionStatus(order.payments.id, "onhold");
+      }
+      
       toast.error("Something went wrong. Please try again.");
     } finally {
       setProcessing(null);
@@ -171,29 +233,29 @@ const OrderDeliveryManagement = () => {
     return orders.filter((order) => {
       const matchesSearch =
         order.auctions?.products?.title?.toLowerCase().includes(q) ||
-        order.buyers?.profiles?.name?.toLowerCase().includes(q)    ||
-        order.sellers?.profiles?.name?.toLowerCase().includes(q)   ||
+        order.buyers?.profiles?.name?.toLowerCase().includes(q) ||
+        order.sellers?.profiles?.name?.toLowerCase().includes(q) ||
         order.id?.toLowerCase().includes(q);
       const deliveryStatus = order.deliveries?.status || "pending";
-      const matchesStatus  = filterStatus === "all" || deliveryStatus === filterStatus;
+      const matchesStatus = filterStatus === "all" || deliveryStatus === filterStatus;
       return matchesSearch && matchesStatus;
     });
   }, [orders, search, filterStatus]);
 
   // ── Stats ─────────────────────────────────────────────────────────
   const stats = useMemo(() => ({
-    total:     orders.length,
+    total: orders.length,
     delivered: orders.filter((o) => o.deliveries?.status === "delivered").length,
     inTransit: orders.filter((o) => o.deliveries?.status === "in_transit").length,
-    pending:   orders.filter((o) => !o.deliveries || o.deliveries?.status === "pending").length,
-    shipped:   orders.filter((o) => o.deliveries?.status === "shipped").length,
+    pending: orders.filter((o) => !o.deliveries || o.deliveries?.status === "pending").length,
+    shipped: orders.filter((o) => o.deliveries?.status === "shipped").length,
   }), [orders]);
 
   const statsData = [
-    { title: "Total Orders",     value: ordersLoading ? "..." : stats.total,     subtitle: "All recorded orders"    },
-    { title: "Delivered",        value: ordersLoading ? "..." : stats.delivered,  subtitle: "Successfully delivered" },
-    { title: "In Transit",       value: ordersLoading ? "..." : stats.inTransit,  subtitle: "Currently shipping"     },
-    { title: "Pending Delivery", value: ordersLoading ? "..." : stats.pending,    subtitle: "Not yet shipped"        },
+    { title: "Total Orders", value: ordersLoading ? "..." : stats.total, subtitle: "All recorded orders" },
+    { title: "Delivered", value: ordersLoading ? "..." : stats.delivered, subtitle: "Successfully delivered" },
+    { title: "In Transit", value: ordersLoading ? "..." : stats.inTransit, subtitle: "Currently shipping" },
+    { title: "Pending Delivery", value: ordersLoading ? "..." : stats.pending, subtitle: "Not yet shipped" },
   ];
 
   const ordersTrend = useMemo(() => {
@@ -202,7 +264,7 @@ const OrderDeliveryManagement = () => {
       if (o.order_date) monthly[new Date(o.order_date).getMonth()]++;
     });
     return {
-      labels: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
+      labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
       datasets: [{
         label: "Orders",
         data: monthly,
@@ -223,7 +285,9 @@ const OrderDeliveryManagement = () => {
   }), [stats]);
 
   const doughnutOptions = {
-    responsive: true, maintainAspectRatio: false, cutout: "0%",
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: "0%",
     layout: { padding: { top: 10, bottom: 30 } },
     plugins: {
       legend: { position: "top", align: "center", labels: { boxWidth: 30, padding: 15 } },
@@ -231,17 +295,25 @@ const OrderDeliveryManagement = () => {
   };
 
   const lineOptions = {
-    responsive: true, maintainAspectRatio: false,
+    responsive: true,
+    maintainAspectRatio: false,
     plugins: {
       legend: { position: "top", align: "center", labels: { boxWidth: 30, padding: 15 } },
     },
   };
 
   // Helper: can this order be marked as delivered?
-  // Only show button if delivery is shipped or in_transit (not already delivered or pending)
   const canMarkDelivered = (order) => {
     const s = order.deliveries?.status;
     return s === "shipped" || s === "in_transit";
+  };
+
+  // Helper: get delivery status display label
+  const getDeliveryStatusLabel = (status) => {
+    if (status === "in_transit") return "In Transit";
+    if (status === "delivered") return "Delivered";
+    if (status === "shipped") return "Shipped";
+    return "Pending";
   };
 
   return (
@@ -264,6 +336,7 @@ const OrderDeliveryManagement = () => {
             placeholder="Search by product, buyer, seller or order ID"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            className="search-input"
           />
           <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
             <option value="all">All Status</option>
@@ -271,7 +344,6 @@ const OrderDeliveryManagement = () => {
             <option value="shipped">Shipped</option>
             <option value="in_transit">In Transit</option>
             <option value="delivered">Delivered</option>
-            <option value="failed">Failed</option>
           </select>
         </div>
 
@@ -304,35 +376,43 @@ const OrderDeliveryManagement = () => {
                   </tr>
                 ) : filteredOrders.map((order) => (
                   <tr key={order.id}>
-                    <td>{order.auctions?.products?.title || "—"}</td>
-                    <td>{order.buyers?.profiles?.name   || "—"}</td>
-                    <td>{order.sellers?.profiles?.name  || "—"}</td>
-                    <td>PKR {order.amount?.toLocaleString()}</td>
-                    <td>PKR {order.service_tax?.toLocaleString()}</td>
-                    <td>PKR {order.total_amount?.toLocaleString()}</td>
-                    <td>
+                    <td className="product-cell" title={order.auctions?.products?.title}>
+                      {order.auctions?.products?.title?.length > 30 
+                        ? order.auctions.products.title.substring(0, 30) + "..." 
+                        : order.auctions?.products?.title || "—"}
+                    </td>
+                    <td className="buyer-cell">{order.buyers?.profiles?.name || "—"}</td>
+                    <td className="seller-cell">{order.sellers?.profiles?.name || "—"}</td>
+                    <td className="amount-cell">PKR {order.amount?.toLocaleString()}</td>
+                    <td className="tax-cell">PKR {order.service_tax?.toLocaleString()}</td>
+                    <td className="total-cell">PKR {order.total_amount?.toLocaleString()}</td>
+                    <td className="status-cell">
                       <StatusBadge
                         label={order.payments?.status || "pending"}
-                        type={order.payments?.status  || "pending"}
+                        type={order.payments?.status || "pending"}
                       />
                     </td>
-                    <td>
+                    <td className="status-cell">
                       <StatusBadge
                         label={order.order_status}
                         type={order.order_status}
                       />
                     </td>
-                    <td>
+                    <td className="status-cell">
                       <StatusBadge
-                        label={order.deliveries?.status || "pending"}
-                        type={order.deliveries?.status  || "pending"}
+                        label={getDeliveryStatusLabel(order.deliveries?.status)}
+                        type={order.deliveries?.status || "pending"}
                       />
                     </td>
-                    <td>{order.deliveries?.courier_service || "—"}</td>
-                    <td>{order.deliveries?.tracking_no    || "—"}</td>
-                    <td>{formatDate(order.order_date)}</td>
+                    <td className="courier-cell">{order.deliveries?.courier_service || "—"}</td>
+                    <td className="tracking-cell">
+                      {order.deliveries?.tracking_no ? (
+                        <span className="tracking-number">{order.deliveries.tracking_no}</span>
+                      ) : "—"}
+                    </td>
+                    <td className="date-cell">{formatDate(order.order_date)}</td>
 
-                    {/* ── Action column ── */}
+                    {/* Action column */}
                     <td className="actions">
                       {canMarkDelivered(order) ? (
                         <ActionButton
@@ -342,17 +422,9 @@ const OrderDeliveryManagement = () => {
                           disabled={processing === order.id}
                         />
                       ) : order.deliveries?.status === "delivered" ? (
-                        <span style={{
-                          color: "#10b981",
-                          fontSize: "13px",
-                          fontWeight: "600",
-                        }}>
-                          ✓ Delivered
-                        </span>
+                        <span className="delivered-text">✓ Delivered</span>
                       ) : (
-                        <span style={{ color: "#999", fontSize: "12px" }}>
-                          —
-                        </span>
+                        <span className="no-action-text">—</span>
                       )}
                     </td>
                   </tr>

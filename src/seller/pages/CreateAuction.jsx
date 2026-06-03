@@ -13,8 +13,9 @@ const CATEGORIES = [
 ];
 
 const CreateAuction = () => {
-  const navigate  = useNavigate();
-  const { user }  = useAuthContext();
+  const navigate = useNavigate();
+  const { user } = useAuthContext();
+  // ✅ Use sellerId from context — no need to fetch it again
   const { sellerId, refetchAll } = useSellerContext();
 
   const [form, setForm] = useState({
@@ -23,12 +24,9 @@ const CreateAuction = () => {
     minIncrement: "", reservePrice: "", startTime: "", endTime: "",
     autoExtend: false, agreement: false,
   });
-  const [images, setImages]   = useState([]);
-  const [error, setError]     = useState("");
+  const [images, setImages] = useState([]);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
-  // ✅ Prevents double-submission (synchronous check, unlike setState)
-  const submittedRef = useRef(false);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -49,46 +47,65 @@ const CreateAuction = () => {
 
   const removeImage = (index) => setImages(images.filter((_, i) => i !== index));
 
+  // ─────────────────────────────────────────────────────────────────
+// PASTE THIS at the top of CreateAuction component (after useState declarations)
+// This ref prevents double submission when user clicks button twice
+// or clicks before React state update re-renders the disabled button
+// ─────────────────────────────────────────────────────────────────
+
+  const submittedRef = useRef(false); // ✅ tracks if submit is in flight
+
+// ─────────────────────────────────────────────────────────────────
+// REPLACE your existing handleSubmit with this one
+// The only change is the submittedRef guard at the very top
+// ─────────────────────────────────────────────────────────────────
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // ✅ Synchronous guard — prevents double submission even on fast double-clicks
-    // Also prevents re-submission when tab is switched and returned to
+    // ✅ Prevent double submission — ref check is synchronous unlike state
     if (submittedRef.current) return;
     submittedRef.current = true;
 
-    // ── Validations ───────────────────────────────────────────────
+    // Validations
     if (!form.title || !form.category || !form.startPrice) {
       setError("Please fill all required fields.");
-      submittedRef.current = false; return;
+      submittedRef.current = false;
+      return;
     }
     if (images.length < 4) {
       setError("You must upload at least 4 product images.");
-      submittedRef.current = false; return;
+      submittedRef.current = false;
+      return;
     }
     if (!form.startTime || !form.endTime) {
       setError("Please set auction start and end time.");
-      submittedRef.current = false; return;
+      submittedRef.current = false;
+      return;
     }
     if (new Date(form.endTime) <= new Date(form.startTime)) {
       setError("End time must be after start time.");
-      submittedRef.current = false; return;
+      submittedRef.current = false;
+      return;
     }
     if (!form.agreement) {
       setError("Please agree to the terms and conditions.");
-      submittedRef.current = false; return;
+      submittedRef.current = false;
+      return;
     }
 
     setError("");
-    setLoading(true);
 
     try {
+      setLoading(true);
+
+      // sellerId from context — no extra query needed
       if (!sellerId) {
         toast.error("Seller account not found. Please contact support.");
         return;
       }
 
-      // ── Step 1: Insert product ─────────────────────────────────
+      // Insert product
       const { data: productData, error: productError } = await supabase
         .from("products")
         .insert({
@@ -96,9 +113,9 @@ const CreateAuction = () => {
           title:          form.title,
           description:    form.description,
           category:       form.category,
-          condition:      form.condition   || null,
-          material:       form.material    || null,
-          dimension:      form.dimension   || null,
+          condition:      form.condition  || null,
+          material:       form.material   || null,
+          dimension:      form.dimension  || null,
           weight:         form.weight ? parseFloat(form.weight) : null,
           base_price:     parseFloat(form.startPrice),
           reserved_price: form.reservePrice ? parseFloat(form.reservePrice) : null,
@@ -109,38 +126,28 @@ const CreateAuction = () => {
 
       if (productError) {
         toast.error("Error creating product listing.");
-        console.error("Product insert error:", productError);
+        console.error(productError);
         return;
       }
 
-      // ── Step 2: Upload images ──────────────────────────────────
+      // Upload images
       const imageURLs = [];
       for (let i = 0; i < images.length; i++) {
         const filePath = `products/${productData.id}/image_${i + 1}`;
-
         const { error: uploadError } = await supabase.storage
           .from("auction-images")
-          .upload(filePath, images[i].file, {
-            upsert: true,
-            // ✅ Explicitly set content type to prevent 400 errors
-            contentType: images[i].file.type || "image/jpeg",
-          });
-
+          .upload(filePath, images[i].file, { upsert: true });
         if (uploadError) {
-          // ✅ Show exact error so user knows what went wrong
-          console.error(`Image ${i + 1} upload error:`, uploadError);
-          toast.error(`Error uploading image ${i + 1}: ${uploadError.message}`);
-          // ✅ Clean up product that was created before images failed
-          await supabase.from("products").delete().eq("id", productData.id);
+          toast.error(`Error uploading image ${i + 1}`);
+          console.error(uploadError);
           return;
         }
-
         const { data: urlData } = supabase.storage
           .from("auction-images").getPublicUrl(filePath);
         imageURLs.push({ url: urlData.publicUrl, isPrimary: i === 0 });
       }
 
-      // ── Step 3: Insert product_images ─────────────────────────
+      // Insert images
       const { error: imageError } = await supabase
         .from("product_images")
         .insert(imageURLs.map((img) => ({
@@ -151,11 +158,11 @@ const CreateAuction = () => {
 
       if (imageError) {
         toast.error("Error saving product images.");
-        console.error("product_images insert error:", imageError);
+        console.error(imageError);
         return;
       }
 
-      // ── Step 4: Create auction ─────────────────────────────────
+      // Create auction
       const { error: auctionError } = await supabase
         .from("auctions")
         .insert({
@@ -172,11 +179,11 @@ const CreateAuction = () => {
 
       if (auctionError) {
         toast.error("Error creating auction.");
-        console.error("Auction insert error:", auctionError);
+        console.error(auctionError);
         return;
       }
 
-      // ── Step 5: Notify admin (non-critical) ───────────────────
+      // Notify admin
       const { data: adminData } = await supabase
         .from("profiles").select("id").eq("role", "admin").single();
       if (adminData) {
@@ -187,7 +194,7 @@ const CreateAuction = () => {
           type:             "approval",
           notification_for: "admin",
           is_read:          false,
-        }).catch((e) => console.error("Admin notification error (non-critical):", e));
+        });
       }
 
       toast.success("Auction created successfully! Waiting for admin approval.");
@@ -195,12 +202,11 @@ const CreateAuction = () => {
       navigate("/seller/auction-management");
 
     } catch (err) {
-      console.error("CreateAuction unexpected error:", err);
+      console.error(err);
       toast.error("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
-      // ✅ Always reset ref so seller can try again after any error
-      submittedRef.current = false;
+      submittedRef.current = false; // ✅ reset so seller can try again if something failed
     }
   };
 
@@ -328,7 +334,7 @@ const CreateAuction = () => {
             onClick={() => navigate("/seller/auction-management")} disabled={loading}>
             Cancel
           </button>
-          <button type="submit" className="btn-primary" disabled={loading || submittedRef.current}>
+          <button type="submit" className="btn-primary" disabled={loading}>
             {loading ? "Creating Auction..." : "Create Auction"}
           </button>
         </div>

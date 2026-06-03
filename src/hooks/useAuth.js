@@ -21,6 +21,7 @@ export const useAuth = () => {
     setProfile(data || null)
     return data
   }
+  
 
   const refreshProfile = async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -60,6 +61,7 @@ export const useAuth = () => {
 
     const { data: { subscription } } =
       supabase.auth.onAuthStateChange(async (event, session) => {
+        
         if (isInitializing.current) return  // ← use .current
         if (event === 'PASSWORD_RECOVERY') return
         if (event === 'INITIAL_SESSION') return

@@ -100,7 +100,7 @@ export const SellerProvider = ({ children }) => {
           bids ( id, bid_amount, bid_time, status, is_suspicious, bidder_id )
         `)
         .eq("seller_id", id)
-        .order("created_at", { ascending: false });
+        .order("order_date", { ascending: false });
 
       if (error) { return; }
 

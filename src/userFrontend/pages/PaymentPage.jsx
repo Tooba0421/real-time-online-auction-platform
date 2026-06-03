@@ -1,13 +1,6 @@
 import { useLayoutEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FaArrowLeft, FaLock } from "react-icons/fa";
-import { loadStripe } from "@stripe/stripe-js";
-import {
-  Elements,
-  CardElement,
-  useStripe,
-  useElements,
-} from "@stripe/react-stripe-js";
 import { supabase } from "../../supabase/supabase";
 import { useAuthContext } from "../../context/AuthContext";
 import toast from "react-hot-toast";
@@ -16,22 +9,9 @@ import Footer from "../components/Footer";
 import "../styles/common.css";
 import "../styles/checkout.css";
 
+// ── Helpers ────────────────────────────────────────────────────────
 const toSlug = (title) =>
   title?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "";
-
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
-
-const CARD_ELEMENT_OPTIONS = {
-  style: {
-    base: {
-      fontSize: "15px",
-      color: "#1a1a1a",
-      fontFamily: "inherit",
-      "::placeholder": { color: "#aab7c4" },
-    },
-    invalid: { color: "#ef4444" },
-  },
-};
 
 const SHIPPING_FEE     = 250;
 const SERVICE_TAX_PCT  = 0.02;
@@ -45,42 +25,97 @@ const calcAmounts = (winningBid) => {
   return { serviceTax, totalAmount, platformFee, sellerAmount };
 };
 
-// ── StripePaymentForm ─────────────────────────────────────────────
-const StripePaymentForm = ({ auctionData, winningBid }) => {
-  const stripe   = useStripe();
-  const elements = useElements();
+// ── Simulated card database ────────────────────────────────────────
+// These mimic real gateway test card behavior
+const SIMULATED_CARDS = {
+  "4242424242424242": { success: true,  message: null },
+  "4000000000000002": { success: false, message: "Your card was declined." },
+  "4000000000009995": { success: false, message: "Insufficient funds on your card." },
+  "4000000000000069": { success: false, message: "Your card has expired." },
+  "4000000000000127": { success: false, message: "Incorrect CVC." },
+};
+
+const simulatePayment = (cardNumber, expiry, cvc) => {
+  const cleaned = cardNumber.replace(/\s/g, "");
+
+  if (cleaned.length !== 16)
+    return { success: false, message: "Card number must be 16 digits." };
+
+  if (!expiry.match(/^(0[1-9]|1[0-2])\/\d{2}$/))
+    return { success: false, message: "Invalid expiry date. Use MM/YY format." };
+
+  if (cvc.length < 3)
+    return { success: false, message: "Invalid CVC." };
+
+  // Check expiry date is in the future
+  const [month, year] = expiry.split("/");
+  const expDate = new Date(2000 + parseInt(year), parseInt(month) - 1);
+  if (expDate < new Date())
+    return { success: false, message: "Your card has expired." };
+
+  // Check simulated card database
+  const result = SIMULATED_CARDS[cleaned];
+  if (result) return result;
+
+  // Any other valid-looking 16-digit card succeeds
+  return { success: true, message: null };
+};
+
+// ── Simulated Payment Form ─────────────────────────────────────────
+const SimulatedPaymentForm = ({ auctionData, winningBid }) => {
   const navigate = useNavigate();
   const { user } = useAuthContext();
 
+  const [cardName,   setCardName]   = useState("");
+  const [cardNumber, setCardNumber] = useState("");
+  const [expiry,     setExpiry]     = useState("");
+  const [cvc,        setCvc]        = useState("");
   const [processing, setProcessing] = useState(false);
   const [cardError,  setCardError]  = useState("");
 
   const { serviceTax, totalAmount, platformFee, sellerAmount } =
     calcAmounts(winningBid);
 
-  const handlePay = async () => {
-    if (!stripe || !elements) return;
+  // Format card number with spaces: 4242 4242 4242 4242
+  const handleCardNumber = (e) => {
+    const digits    = e.target.value.replace(/\D/g, "").slice(0, 16);
+    const formatted = digits.match(/.{1,4}/g)?.join(" ") || digits;
+    setCardNumber(formatted);
+  };
 
-    setProcessing(true);
+  // Format expiry as MM/YY
+  const handleExpiry = (e) => {
+    const digits = e.target.value.replace(/\D/g, "").slice(0, 4);
+    if (digits.length >= 3) {
+      setExpiry(digits.slice(0, 2) + "/" + digits.slice(2));
+    } else {
+      setExpiry(digits);
+    }
+  };
+
+  const handlePay = async () => {
     setCardError("");
 
+    // Validate name on card
+    if (!cardName.trim()) {
+      setCardError("Please enter the name on card.");
+      return;
+    }
+
+    // Run simulated card validation
+    const result = simulatePayment(cardNumber, expiry, cvc);
+    if (!result.success) {
+      setCardError(result.message);
+      return;
+    }
+
+    setProcessing(true);
+
+    // Simulate network delay (like a real gateway round-trip)
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
     try {
-      // ── Step 1: Stripe validates card ─────────────────────────────
-      const { error: stripeError } = await stripe.createPaymentMethod({
-        type: "card",
-        card: elements.getElement(CardElement),
-        billing_details: {
-          name:  auctionData.shippingName,
-          email: auctionData.shippingEmail,
-        },
-      });
-
-      if (stripeError) {
-        setCardError(stripeError.message);
-        return;
-      }
-
-      // ── Step 2: Get buyer record ───────────────────────────────────
+      // ── Step 1: Get buyer record ───────────────────────────────────
       const { data: buyerData, error: buyerError } = await supabase
         .from("buyers")
         .select("id")
@@ -93,7 +128,7 @@ const StripePaymentForm = ({ auctionData, winningBid }) => {
         return;
       }
 
-      // ── Step 3: Guard against duplicate orders ────────────────────
+      // ── Step 2: Guard against duplicate orders ────────────────────
       const { data: existingOrder } = await supabase
         .from("orders")
         .select("id")
@@ -106,7 +141,7 @@ const StripePaymentForm = ({ auctionData, winningBid }) => {
         return;
       }
 
-      // ── Step 4: Create order ──────────────────────────────────────
+      // ── Step 3: Create order ──────────────────────────────────────
       const { data: orderData, error: orderError } = await supabase
         .from("orders")
         .insert({
@@ -129,11 +164,7 @@ const StripePaymentForm = ({ auctionData, winningBid }) => {
         return;
       }
 
-      // ── Step 5: Create payment record ─────────────────────────────
-      // ✅ FIXED 1: Added missing amount, service_tax, shipping_fee fields
-      // ✅ FIXED 2: method changed from "stripe" to "visa"
-      //    Your payment_method enum only contains "visa" — "stripe" is not valid
-      //    and causes a 400 error which blocks the insert
+      // ── Step 4: Create payment record ─────────────────────────────
       const { data: paymentData, error: paymentError } = await supabase
         .from("payments")
         .insert({
@@ -142,7 +173,7 @@ const StripePaymentForm = ({ auctionData, winningBid }) => {
           seller_id:    auctionData.sellerId,
           total_amount: totalAmount,
           platform_fee: platformFee,
-          method:       "stripe",         
+          method:       "card",
           status:       "paid",
           hold_status:  true,
           payment_date: new Date().toISOString(),
@@ -156,10 +187,7 @@ const StripePaymentForm = ({ auctionData, winningBid }) => {
         return;
       }
 
-      // ── Step 6: Create transaction (7-day hold) ───────────────────
-      // Transaction is created HERE — immediately after payment succeeds
-      // Status = "onhold", released after 7 days via pg_cron job
-      // OR admin can manually release early from RevenuePayouts page
+      // ── Step 5: Create transaction record (7-day hold) ────────────
       const holdUntil = new Date();
       holdUntil.setDate(holdUntil.getDate() + 7);
 
@@ -179,14 +207,14 @@ const StripePaymentForm = ({ auctionData, winningBid }) => {
         console.error("Transaction insert error (non-critical):", txError);
       }
 
-      // ── Step 7: Ensure winner_id is set on auction ────────────────
+      // ── Step 6: Ensure winner_id is set on auction ────────────────
       await supabase
         .from("auctions")
         .update({ winner_id: buyerData.id })
         .eq("id", auctionData.auctionId)
         .is("winner_id", null);
 
-      // ── Step 8: Notify seller ─────────────────────────────────────
+      // ── Step 7: Notify seller ─────────────────────────────────────
       if (auctionData.sellerUserId) {
         await supabase.from("notifications").insert({
           user_id:          auctionData.sellerUserId,
@@ -200,7 +228,7 @@ const StripePaymentForm = ({ auctionData, winningBid }) => {
         });
       }
 
-      // ── Step 9: Notify buyer ──────────────────────────────────────
+      // ── Step 8: Notify buyer ──────────────────────────────────────
       await supabase.from("notifications").insert({
         user_id:          user.id,
         title:            `Payment Successful for "${auctionData.title}"`,
@@ -224,40 +252,113 @@ const StripePaymentForm = ({ auctionData, winningBid }) => {
   };
 
   return (
-    <div className="stripe-form">
+    <div className="payment-form">
       <h3>
         <FaLock style={{ marginRight: "8px", fontSize: "14px" }} />
         Card Details
       </h3>
       <p style={{ fontSize: "12px", color: "#888", marginBottom: "12px" }}>
-        Test card: 4242 4242 4242 4242 — any future date — any CVC
+        Test: 4242 4242 4242 4242 · Any future date · Any CVC
       </p>
 
-      <div className="card-element-wrapper">
-        <CardElement options={CARD_ELEMENT_OPTIONS} />
+      {/* Name on card */}
+      <div className="form-group" style={{ marginBottom: "12px" }}>
+        <label style={{ fontSize: "13px", color: "#555", marginBottom: "6px", display: "block" }}>
+          Name on Card
+        </label>
+        <input
+          type="text"
+          placeholder="Muhammad Ali"
+          value={cardName}
+          onChange={(e) => setCardName(e.target.value)}
+          style={{
+            width: "100%", padding: "10px 12px",
+            border: "1px solid #e0e0e0", borderRadius: "8px",
+            fontSize: "14px", boxSizing: "border-box",
+          }}
+        />
       </div>
 
+      {/* Card number */}
+      <div className="form-group" style={{ marginBottom: "12px" }}>
+        <label style={{ fontSize: "13px", color: "#555", marginBottom: "6px", display: "block" }}>
+          Card Number
+        </label>
+        <input
+          type="text"
+          placeholder="4242 4242 4242 4242"
+          value={cardNumber}
+          onChange={handleCardNumber}
+          maxLength={19}
+          style={{
+            width: "100%", padding: "10px 12px",
+            border: "1px solid #e0e0e0", borderRadius: "8px",
+            fontSize: "14px", letterSpacing: "1px", boxSizing: "border-box",
+          }}
+        />
+      </div>
+
+      {/* Expiry + CVC */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+        <div className="form-group">
+          <label style={{ fontSize: "13px", color: "#555", marginBottom: "6px", display: "block" }}>
+            Expiry Date
+          </label>
+          <input
+            type="text"
+            placeholder="MM/YY"
+            value={expiry}
+            onChange={handleExpiry}
+            maxLength={5}
+            style={{
+              width: "100%", padding: "10px 12px",
+              border: "1px solid #e0e0e0", borderRadius: "8px",
+              fontSize: "14px", boxSizing: "border-box",
+            }}
+          />
+        </div>
+        <div className="form-group">
+          <label style={{ fontSize: "13px", color: "#555", marginBottom: "6px", display: "block" }}>
+            CVC
+          </label>
+          <input
+            type="text"
+            placeholder="123"
+            value={cvc}
+            onChange={(e) => setCvc(e.target.value.replace(/\D/g, "").slice(0, 4))}
+            maxLength={4}
+            style={{
+              width: "100%", padding: "10px 12px",
+              border: "1px solid #e0e0e0", borderRadius: "8px",
+              fontSize: "14px", boxSizing: "border-box",
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Error message */}
       {cardError && (
-        <p style={{ color: "#ef4444", fontSize: "13px", marginTop: "8px" }}>
+        <p style={{ color: "#ef4444", fontSize: "13px", marginTop: "8px", marginBottom: "8px" }}>
           {cardError}
         </p>
       )}
 
+      {/* Pay button */}
       <button
         type="button"
         className="place-order"
         onClick={handlePay}
-        disabled={!stripe || processing}
-        style={{ marginTop: "20px" }}
+        disabled={processing}
+        style={{ marginTop: "8px" }}
       >
         {processing
-          ? "Processing..."
-          : `Pay PKR ${totalAmount.toLocaleString()}`
+          ? "Processing Payment..."
+          : `Pay PKR ${calcAmounts(winningBid).totalAmount.toLocaleString()}`
         }
       </button>
 
       <p style={{ fontSize: "11px", color: "#aaa", textAlign: "center", marginTop: "10px" }}>
-        🔒 Secured by Stripe. Your card details are encrypted.
+        🔒 Secured Payment. Your card details are encrypted.
       </p>
     </div>
   );
@@ -357,7 +458,7 @@ const PaymentPage = () => {
             </div>
           </div>
 
-          {/* RIGHT — payment summary + Stripe form */}
+          {/* RIGHT — payment summary + simulated payment form */}
           <div className="checkout-right card">
             <div className="order-summary">
 
@@ -381,12 +482,11 @@ const PaymentPage = () => {
                 <span>PKR {totalAmount.toLocaleString()}</span>
               </div>
 
-              <Elements stripe={stripePromise}>
-                <StripePaymentForm
-                  auctionData={auctionData}
-                  winningBid={winningBid}
-                />
-              </Elements>
+              {/* Simulated payment form */}
+              <SimulatedPaymentForm
+                auctionData={auctionData}
+                winningBid={winningBid}
+              />
 
             </div>
           </div>

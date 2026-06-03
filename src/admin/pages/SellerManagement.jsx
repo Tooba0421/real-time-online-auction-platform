@@ -24,8 +24,6 @@ const logAdminAction = async (adminId, actionType, targetId, targetTable, remark
 
 const SellerManagement = () => {
   const { user } = useAuthContext();
-
-  // ✅ Read from AdminContext — no local fetch, realtime handled by context
   const {
     sellers, sellersLoading,
     pendingSellerEdits, sellerEditsLoading,
@@ -36,33 +34,52 @@ const SellerManagement = () => {
   const approvedSellers = sellers?.approved || [];
   const rejectedSellers = sellers?.rejected || [];
 
-  // ── UI-only local state (modals, forms) ───────────────────────────
   const [selectedCnicSeller, setSelectedCnicSeller] = useState(null);
-  const [sellerCnicUrls, setSellerCnicUrls] = useState({ front: null, back: null });
-  const [sellerCnicLoading, setSellerCnicLoading] = useState(false);
+  const [sellerCnicUrls,     setSellerCnicUrls]     = useState({ front: null, back: null });
+  const [sellerCnicLoading,  setSellerCnicLoading]  = useState(false);
 
-  const [selectedEdit, setSelectedEdit] = useState(null);
-  const [editCnicUrls, setEditCnicUrls] = useState({ front: null, back: null });
-  const [editCnicLoading, setEditCnicLoading] = useState(false);
-  const [editRejectModal, setEditRejectModal] = useState(null);
+  const [selectedEdit,     setSelectedEdit]     = useState(null);
+  const [editCnicUrls,     setEditCnicUrls]     = useState({ front: null, back: null });
+  const [editCnicLoading,  setEditCnicLoading]  = useState(false);
+  const [editRejectModal,  setEditRejectModal]  = useState(null);
   const [editRejectReason, setEditRejectReason] = useState("");
 
   const [selectedSeller, setSelectedSeller] = useState(null);
-  const [reasonText, setReasonText] = useState("");
-  const [actionType, setActionType] = useState("");
-  const [processing, setProcessing] = useState(false);
+  const [reasonText,     setReasonText]     = useState("");
+  const [actionType,     setActionType]     = useState("");
+
+  // FIX: processing stores seller ID, not boolean
+  // This prevents all buttons from being disabled when one action runs
+  const [processing, setProcessing] = useState(null);
 
   // ── View CNIC images ──────────────────────────────────────────────
   const handleViewSellerCnic = async (seller) => {
     try {
       setSellerCnicLoading(true);
       setSelectedCnicSeller(seller);
-      const [{ data: front }, { data: back }] = await Promise.all([
-        supabase.storage.from("cnic-images").createSignedUrl(`sellers/${seller.user_id}/front`, 60),
-        supabase.storage.from("cnic-images").createSignedUrl(`sellers/${seller.user_id}/back`, 60),
-      ]);
-      setSellerCnicUrls({ front: front?.signedUrl || null, back: back?.signedUrl || null });
+
+      let frontUrl = null;
+      let backUrl  = null;
+
+      try {
+        const { data } = await supabase.storage
+          .from("cnic-images")
+          .createSignedUrl(`sellers/${seller.user_id}/front`, 60);
+        frontUrl = data?.signedUrl || null;
+      } catch { /* file may not exist */ }
+
+      try {
+        const { data } = await supabase.storage
+          .from("cnic-images")
+          .createSignedUrl(`sellers/${seller.user_id}/back`, 60);
+        backUrl = data?.signedUrl || null;
+      } catch { /* file may not exist */ }
+
+      setSellerCnicUrls({ front: frontUrl, back: backUrl });
+      if (!frontUrl && !backUrl) toast.error("No CNIC images found for this seller");
+
     } catch (err) {
+      console.error(err);
       toast.error("Could not load CNIC images");
     } finally {
       setSellerCnicLoading(false);
@@ -76,20 +93,27 @@ const SellerManagement = () => {
     if (!editRequest.pending_cnic_front && !editRequest.pending_cnic_back) return;
     try {
       setEditCnicLoading(true);
-      const results = await Promise.all([
-        editRequest.pending_cnic_front
-          ? supabase.storage.from("cnic-images").createSignedUrl(editRequest.pending_cnic_front, 60)
-          : { data: null },
-        editRequest.pending_cnic_back
-          ? supabase.storage.from("cnic-images").createSignedUrl(editRequest.pending_cnic_back, 60)
-          : { data: null },
-      ]);
-      setEditCnicUrls({
-        front: results[0].data?.signedUrl || null,
-        back:  results[1].data?.signedUrl || null,
-      });
+
+      let frontUrl = null;
+      let backUrl  = null;
+
+      if (editRequest.pending_cnic_front) {
+        const { data } = await supabase.storage
+          .from("cnic-images")
+          .createSignedUrl(editRequest.pending_cnic_front, 60);
+        frontUrl = data?.signedUrl || null;
+      }
+      if (editRequest.pending_cnic_back) {
+        const { data } = await supabase.storage
+          .from("cnic-images")
+          .createSignedUrl(editRequest.pending_cnic_back, 60);
+        backUrl = data?.signedUrl || null;
+      }
+
+      setEditCnicUrls({ front: frontUrl, back: backUrl });
     } catch (err) {
       console.error(err);
+      toast.error("Could not load CNIC images");
     } finally {
       setEditCnicLoading(false);
     }
@@ -98,7 +122,8 @@ const SellerManagement = () => {
   // ── Approve edit ──────────────────────────────────────────────────
   const handleApproveEdit = async (editRequest) => {
     try {
-      setProcessing(true);
+      setProcessing(editRequest.id);
+
       const payload = {};
       if (editRequest.pending_phone_no)     payload.phone_no     = editRequest.pending_phone_no;
       if (editRequest.pending_city)         payload.city         = editRequest.pending_city;
@@ -108,120 +133,161 @@ const SellerManagement = () => {
       if (editRequest.pending_cnic_front)   payload.cnic_front   = editRequest.pending_cnic_front;
       if (editRequest.pending_cnic_back)    payload.cnic_back    = editRequest.pending_cnic_back;
 
-      const { error } = await supabase.from("sellers").update(payload).eq("user_id", editRequest.user_id);
+      const { error } = await supabase
+        .from("sellers")
+        .update(payload)
+        .eq("user_id", editRequest.user_id);
+
       if (error) { toast.error("Error applying seller changes"); return; }
 
-      await supabase.from("pending_changes").update({ status: "approved" }).eq("id", editRequest.id);
+      await supabase
+        .from("pending_changes")
+        .update({ status: "approved" })
+        .eq("id", editRequest.id);
+
       await logAdminAction(user.id, "approve", editRequest.id, "sellers", "Seller profile update approved");
+
       await supabase.from("notifications").insert({
         user_id: editRequest.user_id,
-        title: "Profile Update Approved ✅",
+        title:   "Profile Update Approved ✅",
         message: "Your profile update request has been approved.",
         type: "approval", notification_for: "seller", is_read: false,
       });
 
       toast.success(`Profile update approved for ${editRequest.userName}`);
       setSelectedEdit(null);
-      refetchSellerEdits(); // ✅ refresh context
+      await refetchSellerEdits();
+      await refetchSellers();
     } catch (err) {
-      console.error(err); toast.error("Something went wrong");
-    } finally { setProcessing(false); }
+      console.error(err);
+      toast.error("Something went wrong");
+    } finally {
+      setProcessing(null);
+    }
   };
 
   // ── Reject edit ───────────────────────────────────────────────────
   const handleRejectEdit = async () => {
     if (!editRejectReason.trim()) { toast.error("Please write a reason"); return; }
     try {
-      setProcessing(true);
-      const { error } = await supabase.from("pending_changes")
-        .update({ status: "rejected", reason: editRejectReason })
+      setProcessing(editRejectModal.id);
+
+      const { error } = await supabase
+        .from("pending_changes")
+        .update({ status: "rejected", reason: editRejectReason.trim() })
         .eq("id", editRejectModal.id);
+
       if (error) { toast.error("Error rejecting edit request"); return; }
 
-      await logAdminAction(user.id, "reject", editRejectModal.id, "sellers", editRejectReason);
+      await logAdminAction(user.id, "reject", editRejectModal.id, "sellers", editRejectReason.trim());
+
       await supabase.from("notifications").insert({
         user_id: editRejectModal.user_id,
-        title: "Profile Update Rejected",
-        message: `Your profile update was rejected. Reason: ${editRejectReason}`,
+        title:   "Profile Update Rejected",
+        message: `Your profile update was rejected. Reason: ${editRejectReason.trim()}`,
         type: "approval", notification_for: "seller", is_read: false,
       });
 
       toast.success(`Edit request rejected for ${editRejectModal.userName}`);
-      setEditRejectModal(null); setEditRejectReason(""); setSelectedEdit(null);
-      refetchSellerEdits(); // ✅ refresh context
+      setEditRejectModal(null);
+      setEditRejectReason("");
+      setSelectedEdit(null);
+      await refetchSellerEdits();
     } catch (err) {
-      console.error(err); toast.error("Something went wrong");
-    } finally { setProcessing(false); }
+      console.error(err);
+      toast.error("Something went wrong");
+    } finally {
+      setProcessing(null);
+    }
   };
 
   // ── Approve seller registration ───────────────────────────────────
   const handleApprove = async (seller) => {
     try {
-      setProcessing(true);
-      const { error: sErr } = await supabase.from("sellers")
-        .update({ is_verified: "approved" }).eq("id", seller.id);
+      setProcessing(seller.id);
+
+      const { error: sErr } = await supabase
+        .from("sellers")
+        .update({ is_verified: "approved" })
+        .eq("id", seller.id);
+
       if (sErr) { toast.error("Error approving seller"); return; }
 
-      const { error: pErr } = await supabase.from("profiles")
-        .update({ role: "seller", id_verified: "approved" }).eq("id", seller.user_id);
+      const { error: pErr } = await supabase
+        .from("profiles")
+        .update({ role: "seller", id_verified: "approved" })
+        .eq("id", seller.user_id);
+
       if (pErr) { toast.error("Error updating seller role"); return; }
 
       await logAdminAction(user.id, "approve", seller.id, "sellers", "Seller approved by admin");
+
       await supabase.from("notifications").insert({
         user_id: seller.user_id,
-        title: "Seller Application Approved! 🎉",
+        title:   "Seller Application Approved! 🎉",
         message: "Your seller application has been approved. You can now list products and create auctions.",
         type: "approval", notification_for: "seller", is_read: false,
       });
 
       toast.success(`${seller.name} approved as seller!`);
-      refetchSellers(); // ✅ refresh context
+      await refetchSellers();
     } catch (err) {
-      console.error(err); toast.error("Something went wrong");
-    } finally { setProcessing(false); }
+      console.error(err);
+      toast.error("Something went wrong");
+    } finally {
+      setProcessing(null);
+    }
   };
 
   const openReasonModal = (seller, type) => {
-    setSelectedSeller(seller); setActionType(type); setReasonText("");
+    setSelectedSeller(seller);
+    setActionType(type);
+    setReasonText("");
   };
 
-  // ── Reject / Suspend seller ───────────────────────────────────────
-  const handleConfirmAction = async () => {
+  // ── Reject seller ─────────────────────────────────────────────────
+  const handleConfirmReject = async () => {
     if (!reasonText.trim()) { toast.error("Please write a reason"); return; }
+
     try {
-      setProcessing(true);
-      const newStatus = actionType === "reject" ? "rejected" : "suspended";
+      setProcessing(selectedSeller.id);
 
-      const { error: sErr } = await supabase.from("sellers")
-        .update({ is_verified: newStatus }).eq("id", selectedSeller.id);
-      if (sErr) { toast.error(`Error ${actionType}ing seller`); return; }
+      // FIX: Update is_verified AND also update profiles.id_verified
+      const { error: sErr } = await supabase
+        .from("sellers")
+        .update({ is_verified: "rejected" })
+        .eq("id", selectedSeller.id);
 
-      if (actionType === "suspend") {
-        await supabase.from("profiles").update({ role: "user" }).eq("id", selectedSeller.user_id);
-      }
+      if (sErr) { toast.error("Error rejecting seller"); return; }
 
-      await logAdminAction(
-        user.id, actionType === "reject" ? "reject" : "suspend",
-        selectedSeller.id, "sellers", reasonText
-      );
+      // FIX: Also update profile id_verified so profile page shows correct state
+      const { error: pErr } = await supabase
+        .from("profiles")
+        .update({ id_verified: "rejected" })
+        .eq("id", selectedSeller.user_id);
+
+      if (pErr) console.error("Profile id_verified update error (non-critical):", pErr);
+
+      // Store reason in admin_actions — AdminContext.fetchSellers reads it from here
+      await logAdminAction(user.id, "reject", selectedSeller.id, "sellers", reasonText.trim());
+
       await supabase.from("notifications").insert({
         user_id: selectedSeller.user_id,
-        title: actionType === "reject" ? "Seller Application Rejected" : "Seller Account Suspended",
-        message: actionType === "reject"
-          ? `Your application was rejected. Reason: ${reasonText}`
-          : `Your account was suspended. Reason: ${reasonText}`,
+        title:   "Seller Application Rejected",
+        message: `Your seller application was rejected. Reason: ${reasonText.trim()}`,
         type: "approval", notification_for: "seller", is_read: false,
       });
 
-      toast.success(actionType === "reject"
-        ? `${selectedSeller.name} rejected`
-        : `${selectedSeller.name} suspended`
-      );
+      toast.success(`${selectedSeller.name} rejected`);
       setSelectedSeller(null);
-      refetchSellers(); // ✅ refresh context
+      setReasonText("");
+      await refetchSellers();
     } catch (err) {
-      console.error(err); toast.error("Something went wrong");
-    } finally { setProcessing(false); }
+      console.error(err);
+      toast.error("Something went wrong");
+    } finally {
+      setProcessing(null);
+    }
   };
 
   const renderEmptyRow = (colSpan, msg) => (
@@ -232,23 +298,24 @@ const SellerManagement = () => {
     year: "numeric", month: "short", day: "numeric",
   });
 
-  // ── Stats ─────────────────────────────────────────────────────────
-  const totalApproved  = approvedSellers.length;
-  const totalPending   = pendingSellers.length;
-  const totalRejected  = rejectedSellers.length;
-  const totalListings  = approvedSellers.reduce((s, x) => s + (x.listings || 0), 0);
+  const totalApproved = approvedSellers.length;
+  const totalPending  = pendingSellers.length;
+  const totalRejected = rejectedSellers.length;
+  const totalListings = approvedSellers.reduce((s, x) => s + (x.listings || 0), 0);
 
   const statsData = [
-    { title: "Approved Sellers",      value: sellersLoading ? "..." : totalApproved,  subtitle: "Currently active sellers" },
-    { title: "Pending Requests",      value: sellersLoading ? "..." : totalPending,   subtitle: "Awaiting verification" },
-    { title: "Rejected / Suspended",  value: sellersLoading ? "..." : totalRejected,  subtitle: "Restricted sellers" },
-    { title: "Total Listings",        value: sellersLoading ? "..." : totalListings,  subtitle: "From approved sellers" },
+    { title: "Approved Sellers", value: sellersLoading ? "..." : totalApproved, subtitle: "Currently active sellers" },
+    { title: "Pending Requests", value: sellersLoading ? "..." : totalPending,  subtitle: "Awaiting verification" },
+    { title: "Rejected",         value: sellersLoading ? "..." : totalRejected, subtitle: "Rejected sellers" },
+    { title: "Total Listings",   value: sellersLoading ? "..." : totalListings, subtitle: "From approved sellers" },
   ];
 
   const sellerStatusData = useMemo(() => ({
-    labels: ["Approved", "Pending", "Rejected / Suspended"],
-    datasets: [{ data: [totalApproved, totalPending, totalRejected],
-      backgroundColor: ["#10B981", "#F59E0B", "#EF4444"] }],
+    labels: ["Approved", "Pending", "Rejected"],
+    datasets: [{
+      data: [totalApproved, totalPending, totalRejected],
+      backgroundColor: ["#10B981", "#F59E0B", "#EF4444"],
+    }],
   }), [totalApproved, totalPending, totalRejected]);
 
   const doughnutOptions = {
@@ -280,13 +347,18 @@ const SellerManagement = () => {
                 </tr>
               </thead>
               <tbody>
-                {pendingSellers.length === 0 ? renderEmptyRow(9, "No pending sellers.") :
-                  pendingSellers.map((s) => (
+                {pendingSellers.length === 0
+                  ? renderEmptyRow(9, "No pending sellers.")
+                  : pendingSellers.map((s) => (
                     <tr key={s.id}>
-                      <td>{s.name}</td><td>{s.email}</td><td>{s.business_name}</td>
+                      <td>{s.name}</td>
+                      <td>{s.email}</td>
+                      <td>{s.business_name}</td>
                       <td>{s.city}</td>
-                      <td><span className="long-text" title={s.address}>{s.address}</span></td>
-                      <td>{s.cnic_number}</td>
+                      <td title={s.address}>
+                        {s.address?.length > 30 ? s.address.substring(0, 30) + "..." : s.address || "—"}
+                      </td>
+                      <td>{s.cnic_number || "—"}</td>
                       <td>
                         <span className="view-image-link" onClick={() => handleViewSellerCnic(s)}>
                           View CNIC
@@ -294,8 +366,16 @@ const SellerManagement = () => {
                       </td>
                       <td>{formatDate(s.created_at)}</td>
                       <td className="actions">
-                        <ActionButton label="Approve" variant="success" onClick={() => handleApprove(s)} disabled={processing} />
-                        <ActionButton label="Reject"  variant="danger"  onClick={() => openReasonModal(s, "reject")} disabled={processing} />
+                        <ActionButton
+                          label="Approve" variant="success"
+                          onClick={() => handleApprove(s)}
+                          disabled={processing === s.id}
+                        />
+                        <ActionButton
+                          label="Reject" variant="danger"
+                          onClick={() => openReasonModal(s, "reject")}
+                          disabled={processing === s.id}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -319,18 +399,20 @@ const SellerManagement = () => {
                 </tr>
               </thead>
               <tbody>
-                {pendingSellerEdits.length === 0 ? renderEmptyRow(10, "No pending profile edit requests.") :
-                  pendingSellerEdits.map((edit) => (
+                {pendingSellerEdits.length === 0
+                  ? renderEmptyRow(10, "No pending profile edit requests.")
+                  : pendingSellerEdits.map((edit) => (
                     <tr key={edit.id}>
-                      <td>{edit.userName}</td><td>{edit.userEmail}</td>
-                      <td>
-                        <span style={{ background: "#e0f2fe", color: "#0369a1", padding: "2px 8px", borderRadius: "4px", fontSize: "12px" }}>
-                          {edit.change_type || "all"}
-                        </span>
-                      </td>
+                      <td>{edit.userName}</td>
+                      <td>{edit.userEmail}</td>
+                      <td>{edit.change_type || "all"}</td>
                       <td>{edit.pending_phone_no || "—"}</td>
                       <td>{edit.pending_city || "—"}</td>
-                      <td><span className="long-text" title={edit.pending_address}>{edit.pending_address || "—"}</span></td>
+                      <td title={edit.pending_address}>
+                        {edit.pending_address?.length > 25
+                          ? edit.pending_address.substring(0, 25) + "..."
+                          : edit.pending_address || "—"}
+                      </td>
                       <td>{edit.pending_cnic_number || "—"}</td>
                       <td>
                         {edit.pending_cnic_front || edit.pending_cnic_back
@@ -339,9 +421,16 @@ const SellerManagement = () => {
                       </td>
                       <td>{formatDate(edit.created_at)}</td>
                       <td className="actions">
-                        <ActionButton label="Review" variant="secondary" onClick={() => handleViewEditRequest(edit)} disabled={processing} />
-                        <ActionButton label="Reject" variant="danger"
-                          onClick={() => { setEditRejectModal(edit); setEditRejectReason(""); }} disabled={processing} />
+                        <ActionButton
+                          label="Review" variant="secondary"
+                          onClick={() => handleViewEditRequest(edit)}
+                          disabled={processing === edit.id}
+                        />
+                        <ActionButton
+                          label="Reject" variant="danger"
+                          onClick={() => { setEditRejectModal(edit); setEditRejectReason(""); }}
+                          disabled={processing === edit.id}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -360,20 +449,22 @@ const SellerManagement = () => {
               <thead>
                 <tr>
                   <th>Seller</th><th>Email</th><th>Business</th><th>Listings</th>
-                  <th>Success Rate</th><th>Earnings</th><th>Status</th><th>Actions</th>
+                  <th>Success Rate</th><th>Earnings</th><th>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {approvedSellers.length === 0 ? renderEmptyRow(8, "No approved sellers.") :
-                  approvedSellers.map((s) => (
+                {/* FIX: colSpan was 8, table has 7 columns */}
+                {approvedSellers.length === 0
+                  ? renderEmptyRow(7, "No approved sellers.")
+                  : approvedSellers.map((s) => (
                     <tr key={s.id}>
-                      <td>{s.name}</td><td>{s.email}</td><td>{s.business_name}</td>
-                      <td>{s.listings}</td><td>{s.successRate}</td><td>{s.earnings}</td>
+                      <td>{s.name}</td>
+                      <td>{s.email}</td>
+                      <td>{s.business_name}</td>
+                      <td>{s.listings}</td>
+                      <td>{s.successRate}</td>
+                      <td>{s.earnings}</td>
                       <td><StatusBadge label="Approved" type="approved" /></td>
-                      <td className="actions">
-                        <ActionButton label="Suspend" variant="danger"
-                          onClick={() => openReasonModal(s, "suspend")} disabled={processing} />
-                      </td>
                     </tr>
                   ))}
               </tbody>
@@ -382,27 +473,38 @@ const SellerManagement = () => {
         )}
       </div>
 
-      {/* REJECTED TABLE */}
+      {/* REJECTED SELLERS */}
       <div className="admin-section">
-        <h3 className="admin-section-heading">Rejected / Suspended Sellers</h3>
+        <h3 className="admin-section-heading">Rejected Sellers</h3>
         {sellersLoading ? <div className="loading-state">Loading sellers...</div> : (
           <div className="table-wrapper">
             <table className="admin-table">
               <thead>
-                <tr><th>Seller</th><th>Email</th><th>Business</th><th>Status</th><th>Reason</th></tr>
+                <tr>
+                  <th>Seller</th><th>Email</th><th>Business</th>
+                  <th>Status</th><th>Rejection Reason</th>
+                </tr>
               </thead>
               <tbody>
-                {rejectedSellers.length === 0 ? renderEmptyRow(5, "No rejected sellers.") :
-                  rejectedSellers.map((s) => (
+                {rejectedSellers.length === 0
+                  ? renderEmptyRow(5, "No rejected sellers.")
+                  : rejectedSellers.map((s) => (
                     <tr key={s.id}>
-                      <td>{s.name}</td><td>{s.email}</td><td>{s.business_name}</td>
+                      <td>{s.name}</td>
+                      <td>{s.email}</td>
+                      <td>{s.business_name}</td>
                       <td>
                         <StatusBadge
-                          label={s.is_verified === "rejected" ? "Rejected" : "Suspended"}
+                          label={s.is_verified === "suspended" ? "Suspended" : "Rejected"}
                           type="rejected"
                         />
                       </td>
-                      <td><span className="long-text" title={s.reason}>{s.reason || "—"}</span></td>
+                      {/* FIX: AdminContext stores reason in s.reason not s.rejection_reason */}
+                      <td title={s.reason}>
+                        {s.reason
+                          ? s.reason.length > 50 ? s.reason.substring(0, 50) + "..." : s.reason
+                          : "—"}
+                      </td>
                     </tr>
                   ))}
               </tbody>
@@ -421,13 +523,13 @@ const SellerManagement = () => {
         </div>
       </div>
 
-      {/* SELLER CNIC MODAL */}
+      {/* CNIC VIEW MODAL */}
       {selectedCnicSeller && (
-        <div className="cnic-modal-overlay">
-          <div className="cnic-modal">
+        <div className="cnic-modal-overlay" onClick={() => setSelectedCnicSeller(null)}>
+          <div className="cnic-modal" onClick={(e) => e.stopPropagation()}>
             <h3>CNIC Details — {selectedCnicSeller.name}</h3>
             {sellerCnicLoading ? (
-              <div style={{ textAlign: "center", padding: "30px" }}>Loading images...</div>
+              <div className="loading-state">Loading images...</div>
             ) : (
               <div className="cnic-images">
                 <div>
@@ -447,58 +549,96 @@ const SellerManagement = () => {
             <button className="close-btn" onClick={() => {
               setSelectedCnicSeller(null);
               setSellerCnicUrls({ front: null, back: null });
-            }}>Close</button>
+            }}>
+              Close
+            </button>
           </div>
         </div>
       )}
 
       {/* EDIT REVIEW MODAL */}
       {selectedEdit && (
-        <div className="cnic-modal-overlay">
-          <div className="cnic-modal" style={{ maxWidth: "600px", width: "90%" }}>
+        <div className="cnic-modal-overlay" onClick={() => setSelectedEdit(null)}>
+          <div className="cnic-modal" onClick={(e) => e.stopPropagation()}>
             <h3>Profile Update Request — {selectedEdit.userName}</h3>
-            <p style={{ color: "#666", fontSize: "13px", marginBottom: "16px" }}>{selectedEdit.userEmail}</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "20px" }}>
-              {[
-                ["New Phone", selectedEdit.pending_phone_no],
-                ["New City", selectedEdit.pending_city],
-                ["New Postal Code", selectedEdit.pending_postal_code],
-                ["New Address", selectedEdit.pending_address],
-                ["New CNIC No", selectedEdit.pending_cnic_number],
-              ].filter(([, v]) => v).map(([label, val]) => (
-                <div key={label} className="result-row">
-                  <span className="result-label">{label}</span>
-                  <span className="result-value">{val}</span>
+            <p className="modal-subtitle">{selectedEdit.userEmail}</p>
+
+            <div className="edit-details">
+              {selectedEdit.pending_phone_no && (
+                <div className="result-row">
+                  <span className="result-label">New Phone:</span>
+                  <span className="result-value">{selectedEdit.pending_phone_no}</span>
                 </div>
-              ))}
+              )}
+              {selectedEdit.pending_city && (
+                <div className="result-row">
+                  <span className="result-label">New City:</span>
+                  <span className="result-value">{selectedEdit.pending_city}</span>
+                </div>
+              )}
+              {selectedEdit.pending_postal_code && (
+                <div className="result-row">
+                  <span className="result-label">New Postal Code:</span>
+                  <span className="result-value">{selectedEdit.pending_postal_code}</span>
+                </div>
+              )}
+              {selectedEdit.pending_address && (
+                <div className="result-row">
+                  <span className="result-label">New Address:</span>
+                  <span className="result-value">{selectedEdit.pending_address}</span>
+                </div>
+              )}
+              {selectedEdit.pending_cnic_number && (
+                <div className="result-row">
+                  <span className="result-label">New CNIC No:</span>
+                  <span className="result-value">{selectedEdit.pending_cnic_number}</span>
+                </div>
+              )}
             </div>
+
             {(selectedEdit.pending_cnic_front || selectedEdit.pending_cnic_back) && (
               <>
-                <p style={{ fontWeight: "600", marginBottom: "10px", fontSize: "14px" }}>New CNIC Images</p>
+                <p className="section-subtitle" style={{ marginTop: "16px", fontWeight: "600" }}>
+                  New CNIC Images
+                </p>
                 {editCnicLoading ? (
-                  <div style={{ textAlign: "center", padding: "20px", color: "#999" }}>Loading CNIC images...</div>
+                  <div className="loading-state">Loading CNIC images...</div>
                 ) : (
-                  <div className="cnic-images" style={{ marginBottom: "16px" }}>
+                  <div className="cnic-images">
                     <div>
                       <p>Front Side</p>
-                      {editCnicUrls.front ? <img src={editCnicUrls.front} alt="New CNIC Front" /> : <p style={{ color: "#999" }}>Not available</p>}
+                      {editCnicUrls.front
+                        ? <img src={editCnicUrls.front} alt="New CNIC Front" />
+                        : <p style={{ color: "#999" }}>Not available</p>}
                     </div>
                     <div>
                       <p>Back Side</p>
-                      {editCnicUrls.back ? <img src={editCnicUrls.back} alt="New CNIC Back" /> : <p style={{ color: "#999" }}>Not available</p>}
+                      {editCnicUrls.back
+                        ? <img src={editCnicUrls.back} alt="New CNIC Back" />
+                        : <p style={{ color: "#999" }}>Not available</p>}
                     </div>
                   </div>
                 )}
               </>
             )}
-            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
-              <button className="close-btn" onClick={() => setSelectedEdit(null)}>Close</button>
-              <button className="close-btn"
-                style={{ background: "#ef4444", color: "#fff", border: "none" }}
+
+            <div className="modal-actions" style={{ marginTop: "20px" }}>
+              <button className="cancel-btn" onClick={() => setSelectedEdit(null)}>
+                Close
+              </button>
+              <button
+                className="reject-btn"
                 onClick={() => { setEditRejectModal(selectedEdit); setEditRejectReason(""); setSelectedEdit(null); }}
-                disabled={processing}>Reject</button>
-              <button className="create-btn" onClick={() => handleApproveEdit(selectedEdit)} disabled={processing}>
-                {processing ? "Approving..." : "Approve"}
+                disabled={processing === selectedEdit.id}
+              >
+                Reject
+              </button>
+              <button
+                className="approve-btn"
+                onClick={() => handleApproveEdit(selectedEdit)}
+                disabled={processing === selectedEdit.id}
+              >
+                {processing === selectedEdit.id ? "Approving..." : "Approve"}
               </button>
             </div>
           </div>
@@ -507,38 +647,66 @@ const SellerManagement = () => {
 
       {/* EDIT REJECT REASON MODAL */}
       {editRejectModal && (
-        <div className="reason-modal-overlay">
-          <div className="reason-modal">
+        <div className="reason-modal-overlay" onClick={() => setEditRejectModal(null)}>
+          <div className="reason-modal" onClick={(e) => e.stopPropagation()}>
             <h3>Reject Profile Update</h3>
-            <p style={{ fontSize: "13px", color: "#666", marginBottom: "8px" }}>
+            <p className="modal-subtitle">
               Rejecting update for: <strong>{editRejectModal.userName}</strong>
             </p>
-            <textarea placeholder="Write reason here..." value={editRejectReason}
-              onChange={(e) => setEditRejectReason(e.target.value)} />
+            <textarea
+              placeholder="Write reason here..."
+              value={editRejectReason}
+              onChange={(e) => setEditRejectReason(e.target.value)}
+              rows="4"
+            />
             <div className="modal-actions">
-              <button className="cancel" onClick={() => { setEditRejectModal(null); setEditRejectReason(""); }} disabled={processing}>Cancel</button>
-              <button className="confirm" onClick={handleRejectEdit} disabled={processing}>
-                {processing ? "Processing..." : "Confirm"}
+              <button
+                className="cancel-btn"
+                onClick={() => { setEditRejectModal(null); setEditRejectReason(""); }}
+                disabled={processing === editRejectModal.id}
+              >
+                Cancel
+              </button>
+              <button
+                className="confirm-btn"
+                onClick={handleRejectEdit}
+                disabled={processing === editRejectModal.id}
+              >
+                {processing === editRejectModal.id ? "Processing..." : "Confirm"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* SELLER APPROVE/REJECT REASON MODAL */}
-      {selectedSeller && (
-        <div className="reason-modal-overlay">
-          <div className="reason-modal">
-            <h3>{actionType === "reject" ? "Reject Seller" : "Suspend Seller"}</h3>
-            <p style={{ fontSize: "13px", color: "#666", marginBottom: "8px" }}>
-              {actionType === "reject" ? "Rejecting" : "Suspending"}: <strong>{selectedSeller.name}</strong>
+      {/* SELLER REJECT REASON MODAL */}
+      {selectedSeller && actionType === "reject" && (
+        <div className="reason-modal-overlay" onClick={() => setSelectedSeller(null)}>
+          <div className="reason-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Reject Seller</h3>
+            <p className="modal-subtitle">
+              Rejecting: <strong>{selectedSeller.name}</strong>
             </p>
-            <textarea placeholder="Write reason here..." value={reasonText}
-              onChange={(e) => setReasonText(e.target.value)} />
+            <textarea
+              placeholder="Write reason for rejection..."
+              value={reasonText}
+              onChange={(e) => setReasonText(e.target.value)}
+              rows="4"
+            />
             <div className="modal-actions">
-              <button className="cancel" onClick={() => setSelectedSeller(null)} disabled={processing}>Cancel</button>
-              <button className="confirm" onClick={handleConfirmAction} disabled={processing}>
-                {processing ? "Processing..." : "Confirm"}
+              <button
+                className="cancel-btn"
+                onClick={() => setSelectedSeller(null)}
+                disabled={processing === selectedSeller.id}
+              >
+                Cancel
+              </button>
+              <button
+                className="confirm-btn"
+                onClick={handleConfirmReject}
+                disabled={processing === selectedSeller.id}
+              >
+                {processing === selectedSeller.id ? "Processing..." : "Confirm"}
               </button>
             </div>
           </div>
