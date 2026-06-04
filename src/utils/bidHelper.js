@@ -4,6 +4,7 @@ export const validateBid = ({
   bidAmount,
   highestBid,
   minIncrement,
+  basePrice,
   auctionStatus,
   userRole,
   userStatus,
@@ -28,18 +29,30 @@ export const validateBid = ({
     return { valid: false, message: "You must be a verified buyer to place bids" };
   }
 
-  if (bid <= highestBid) {
-    return {
-      valid: false,
-      message: `Bid must be greater than current highest bid of PKR ${highestBid.toLocaleString()}`
-    };
-  }
-
-  if (bid < highestBid + minIncrement) {
-    return {
-      valid: false,
-      message: `Minimum bid increment is PKR ${minIncrement.toLocaleString()}. Minimum bid: PKR ${(highestBid + minIncrement).toLocaleString()}`
-    };
+  // FIX: If no bids yet, minimum bid is base_price
+  // If bids exist, minimum bid is highest_bid + min_increment
+  if (highestBid === 0 || highestBid === null) {
+    // No bids placed yet — first bid must meet base price
+    if (bid < basePrice) {
+      return {
+        valid: false,
+        message: `First bid must be at least the starting price of PKR ${basePrice.toLocaleString()}`
+      };
+    }
+  } else {
+    // Bids exist — must beat current highest + increment
+    if (bid <= highestBid) {
+      return {
+        valid: false,
+        message: `Bid must be greater than current highest bid of PKR ${highestBid.toLocaleString()}`
+      };
+    }
+    if (bid < highestBid + minIncrement) {
+      return {
+        valid: false,
+        message: `Minimum bid increment is PKR ${minIncrement.toLocaleString()}. Minimum next bid: PKR ${(highestBid + minIncrement).toLocaleString()}`
+      };
+    }
   }
 
   return { valid: true };

@@ -172,21 +172,24 @@ const ProductDetailPage = () => {
   }, [auction, user, isWinner]);
 
   const product = auction?.products;
-  const seller  = auction?.sellers;
+  const seller = auction?.sellers;
   const category = product?.category;
 
   const relatedAuctions = useRelatedAuctions(auctionId, category);
 
   const images = product?.product_images
     ? [...product.product_images]
-        .sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0))
-        .map((img) => img.image_url)
+      .sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0))
+      .map((img) => img.image_url)
     : [];
 
   const nextImage = () => setCurrentIndex((prev) => (prev + 1) % images.length);
   const prevImage = () => setCurrentIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
 
-  const minNextBid = (auction?.highest_bid || 0) + (auction?.min_increment || 0);
+  // FIX: If no bids yet, minimum is base_price. If bids exist, minimum is highest + increment
+  const minNextBid = auction?.highest_bid > 0
+    ? (auction.highest_bid + (auction.min_increment || 0))
+    : (auction?.products?.base_price || 0);
 
   // ── handleBid — fetchBuyerRecord called ONCE, reused for both checks ──
   const handleBid = async () => {
@@ -223,11 +226,12 @@ const ProductDetailPage = () => {
     // Bid amount validation
     const validation = validateBid({
       bidAmount,
-      highestBid:    auction?.highest_bid   || 0,
-      minIncrement:  auction?.min_increment  || 0,
+      highestBid: auction?.highest_bid || 0,
+      minIncrement: auction?.min_increment || 0,
+      basePrice: auction?.products?.base_price || 0,
       auctionStatus: auction?.status,
-      userRole:      profile?.role,
-      userStatus:    profile?.status,
+      userRole: profile?.role,
+      userStatus: profile?.status,
     });
 
     if (!validation.valid) {
@@ -240,7 +244,7 @@ const ProductDetailPage = () => {
       // ✅ buyerRecord already available — no second fetch
       await placeBid({
         auctionId,
-        buyerId:   buyerRecord.id,
+        buyerId: buyerRecord.id,
         bidAmount: Number(bidAmount),
       });
       toast.success(`Bid of PKR ${Number(bidAmount).toLocaleString()} placed successfully!`);
@@ -255,15 +259,15 @@ const ProductDetailPage = () => {
   const handleGoToCheckout = () => {
     navigate("/checkout", {
       state: {
-        auctionId:    auction.id,
-        title:        product.title,
-        sellerName:   seller?.profiles?.name || seller?.business_name || "—",
-        sellerId:     auction.seller_id,
+        auctionId: auction.id,
+        title: product.title,
+        sellerName: seller?.profiles?.name || seller?.business_name || "—",
+        sellerId: auction.seller_id,
         sellerUserId: seller?.user_id || seller?.profiles?.id || null,
-        endDate:      auction.end_time,
-        totalBids:    bids.length,
-        winningBid:   auction.highest_bid,
-        image:        images[0] || null,
+        endDate: auction.end_time,
+        totalBids: bids.length,
+        winningBid: auction.highest_bid,
+        image: images[0] || null,
       },
     });
   };
@@ -362,8 +366,8 @@ const ProductDetailPage = () => {
           <div className="product-info">
 
             <div className="auction-status-row">
-              {auction.status === "live"   && <span className="live-badge">● Live</span>}
-              {auction.status === "ended"  && <span className="ended-badge">● Ended</span>}
+              {auction.status === "live" && <span className="live-badge">● Live</span>}
+              {auction.status === "ended" && <span className="ended-badge">● Ended</span>}
               {auction.status === "paused" && <span className="paused-badge">⏸ Paused</span>}
               <span className="category-badge"><FaTag /> {product.category}</span>
               {product.condition && (
@@ -409,8 +413,8 @@ const ProductDetailPage = () => {
             {auction.status === "live" && (
               <>
                 <p className="min-bid-note">
-                  Minimum next bid:{" "}
-                  <strong>PKR {minNextBid.toLocaleString()}</strong>
+  {auction?.highest_bid > 0 ? "Minimum next bid:" : "Starting price:"}{" "}
+  <strong>PKR {minNextBid.toLocaleString()}</strong>
                   {auction.min_increment > 0 && (
                     <span className="increment-note">
                       {" "}(increment: PKR {auction.min_increment.toLocaleString()})

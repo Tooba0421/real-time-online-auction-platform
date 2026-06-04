@@ -7,13 +7,10 @@
 }
 
 /* Live - Emerald */
-.status-badge.live {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10B981;
-}
 
 /* Paused - Amber */
 .status-badge.paused,
+.status-badge.shipped,
 .status-badge.user {
   background: rgba(245, 158, 11, 0.2);
   color: #B45309;
@@ -40,6 +37,8 @@
 /* Approved - Emerald */
 .status-badge.approved, 
 .status-badge.released, 
+.status-badge.confirmed,
+.status-badge.live,
 .status-badge.paid, 
 .status-badge.sold, 
 .status-badge.in-transit, 

@@ -227,18 +227,7 @@ const OrdersDelivery = () => {
 
       {/* ── TABLE 1: ORDERS AWAITING SHIPMENT ─────────────────────── */}
       <div className="seller-section">
-        <h3 className="seller-section-heading">
-          Orders Awaiting Shipment
-          {filteredPending.length > 0 && (
-            <span style={{
-              marginLeft: "10px", fontSize: "13px", fontWeight: "600",
-              background: "#fef3c7", color: "#d97706",
-              padding: "2px 10px", borderRadius: "20px",
-            }}>
-              {filteredPending.length} pending
-            </span>
-          )}
-        </h3>
+        <h3 className="seller-section-heading">Orders Awaiting Shipment</h3>
 
         {ordersLoading ? (
           <div className="loading-state">Loading orders...</div>
