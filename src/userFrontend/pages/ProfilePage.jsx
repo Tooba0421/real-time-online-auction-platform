@@ -24,14 +24,12 @@ const ProfilePage = () => {
   const [role, setRole]                   = useState(null);
   const [saving, setSaving]               = useState(false);
 
-  // ── Modal visibility ───────────────────────────────────────────────
   const [showPersonalEdit,       setShowPersonalEdit]       = useState(false);
   const [showSellerBasicEdit,    setShowSellerBasicEdit]    = useState(false);
   const [showSellerApprovalEdit, setShowSellerApprovalEdit] = useState(false);
   const [showCnicEdit,           setShowCnicEdit]           = useState(false);
   const [showCnicModal,          setShowCnicModal]          = useState(false);
 
-  // ── Form state ────────────────────────────────────────────────────
   const [personalForm,        setPersonalForm]        = useState({});
   const [sellerBasicForm,     setSellerBasicForm]     = useState({});
   const [sellerApprovalForm,  setSellerApprovalForm]  = useState({});
@@ -41,11 +39,9 @@ const ProfilePage = () => {
   const [buyerFrontPreview,   setBuyerFrontPreview]   = useState(null);
   const [buyerBackPreview,    setBuyerBackPreview]    = useState(null);
 
-  // ── CNIC signed URLs ──────────────────────────────────────────────
   const [sellerCnicUrls, setSellerCnicUrls] = useState({ front: null, back: null });
   const [buyerCnicUrls,  setBuyerCnicUrls]  = useState({ front: null, back: null });
 
-  // ── Fetch CNIC images ─────────────────────────────────────────────
   const fetchBuyerCnicUrls = useCallback(async () => {
     if (!user) return;
     try {
@@ -54,7 +50,7 @@ const ProfilePage = () => {
         supabase.storage.from("cnic-images").createSignedUrl(`buyers/${user.id}/back`,  3600),
       ]);
       setBuyerCnicUrls({ front: f?.signedUrl || null, back: b?.signedUrl || null });
-    } catch (err) { }
+    } catch (_) {}
   }, [user]);
 
   const fetchSellerCnicUrls = useCallback(async () => {
@@ -65,10 +61,9 @@ const ProfilePage = () => {
         supabase.storage.from("cnic-images").createSignedUrl(`sellers/${user.id}/back`,  3600),
       ]);
       setSellerCnicUrls({ front: f?.signedUrl || null, back: b?.signedUrl || null });
-    } catch (err) { }
+    } catch (_) {}
   }, [user]);
 
-  // ── Main data fetch ───────────────────────────────────────────────
   const fetchAllData = useCallback(async () => {
     if (!user) return;
     try {
@@ -79,7 +74,6 @@ const ProfilePage = () => {
       setProfile(profileData);
       setRole(profileData?.role);
 
-      // Run role-specific fetches in parallel
       await Promise.all([
         profileData?.role === "seller"
           ? supabase.from("sellers").select("*").eq("user_id", user.id).single()
@@ -98,65 +92,51 @@ const ProfilePage = () => {
           .order("created_at", { ascending: false }).limit(1).maybeSingle()
           .then(({ data }) => setPendingChange(data || null)),
       ]);
-
-    } catch (err) {
+    } catch (_) {
     } finally {
       setLoading(false);
     }
   }, [user, fetchSellerCnicUrls, fetchBuyerCnicUrls]);
 
-  // ── Initial load ──────────────────────────────────────────────────
   useEffect(() => {
     if (authLoading) return;
     if (!user) { navigate("/"); return; }
     fetchAllData();
   }, [user, authLoading]);
 
-  // ── Realtime: profiles table ──────────────────────────────────────
-  // Fires when admin approves/changes this user's profile
+  // Realtime: profiles
   useEffect(() => {
     if (!user) return;
-
     const channel = supabase
       .channel(`profile-realtime-${user.id}`)
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "profiles",
         filter: `id=eq.${user.id}`,
-      }, () => {
-        fetchAllData();
-        refreshProfile(); // also sync AuthContext
-      })
+      }, () => { fetchAllData(); refreshProfile(); })
       .subscribe();
-
     return () => supabase.removeChannel(channel);
   }, [user]);
 
-  // ── Realtime: sellers table ───────────────────────────────────────
-  // Fires when admin approves a seller profile edit
+  // Realtime: sellers
   useEffect(() => {
     if (!user || role !== "seller") return;
-
     const channel = supabase
       .channel(`seller-realtime-${user.id}`)
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "sellers",
         filter: `user_id=eq.${user.id}`,
       }, () => {
-        // Re-fetch seller row + regenerate CNIC signed URLs
         supabase.from("sellers").select("*").eq("user_id", user.id).single()
           .then(({ data }) => { if (data) setSeller(data); });
         fetchSellerCnicUrls();
       })
       .subscribe();
-
     return () => supabase.removeChannel(channel);
   }, [user, role]);
 
-  // ── Realtime: buyers table ────────────────────────────────────────
-  // Fires when admin approves a buyer CNIC edit
+  // Realtime: buyers
   useEffect(() => {
     if (!user || role !== "buyer") return;
-
     const channel = supabase
       .channel(`buyer-realtime-${user.id}`)
       .on("postgres_changes", {
@@ -168,29 +148,24 @@ const ProfilePage = () => {
         fetchBuyerCnicUrls();
       })
       .subscribe();
-
     return () => supabase.removeChannel(channel);
   }, [user, role]);
 
-  // ── Realtime: pending_changes table ──────────────────────────────
-  // Fires when admin approves or rejects a pending change request
+  // Realtime: pending_changes
   useEffect(() => {
     if (!user) return;
-
     const channel = supabase
       .channel(`pending-changes-realtime-${user.id}`)
       .on("postgres_changes", {
         event: "*", schema: "public", table: "pending_changes",
         filter: `user_id=eq.${user.id}`,
       }, () => {
-        // Re-fetch pending change status
         supabase.from("pending_changes")
           .select("*").eq("user_id", user.id).eq("status", "pending")
           .order("created_at", { ascending: false }).limit(1).maybeSingle()
           .then(({ data }) => setPendingChange(data || null));
       })
       .subscribe();
-
     return () => supabase.removeChannel(channel);
   }, [user]);
 
@@ -205,22 +180,23 @@ const ProfilePage = () => {
       setSaving(true);
       const { error } = await supabase
         .from("profiles").update({ name: personalForm.name }).eq("id", user.id);
-      if (error) { alert("Error updating name"); return; }
-      // Realtime subscription will auto-update, but also update locally for instant UI
+      if (error) { toast.error("Error updating name"); return; }
       setProfile(prev => ({ ...prev, name: personalForm.name }));
       await refreshProfile();
       setShowPersonalEdit(false);
-    } catch (err) {
+      toast.success("Name updated successfully.");
+    } catch (_) {
+      toast.error("Something went wrong. Please try again.");
     } finally {
       setSaving(false);
     }
   };
 
-  // ── Seller: Basic edit (name + business name — saves immediately) ──
+  // ── Seller: Basic edit ────────────────────────────────────────────
   const openSellerBasicEdit = () => {
     setSellerBasicForm({
-      name: profile?.name || "",
-      business_name: seller?.business_name || "",
+      name:          profile?.name          || "",
+      business_name: seller?.business_name  || "",
     });
     setShowSellerBasicEdit(true);
   };
@@ -232,17 +208,15 @@ const ProfilePage = () => {
         supabase.from("profiles").update({ name: sellerBasicForm.name }).eq("id", user.id),
         supabase.from("sellers").update({ business_name: sellerBasicForm.business_name }).eq("user_id", user.id),
       ]);
-      if (nameErr) { alert("Error updating name"); return; }
-      if (bizErr)  { alert("Error updating business name"); return; }
-
-      // Optimistic local update — realtime also fires but this is instant
+      if (nameErr) { toast.error("Error updating name"); return; }
+      if (bizErr)  { toast.error("Error updating business name"); return; }
       setProfile(prev => ({ ...prev, name: sellerBasicForm.name }));
       setSeller(prev  => ({ ...prev, business_name: sellerBasicForm.business_name }));
       await refreshProfile();
       setShowSellerBasicEdit(false);
-      alert("Name and business name updated successfully.");
-    } catch (err) {
-      toast.error("Something went wrong");
+      toast.success("Name and business name updated successfully.");
+    } catch (_) {
+      toast.error("Something went wrong. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -251,11 +225,11 @@ const ProfilePage = () => {
   // ── Seller: Contact & CNIC edit (requires admin approval) ─────────
   const openSellerApprovalEdit = () => {
     setSellerApprovalForm({
-      phone_no:     pendingChange?.pending_phone_no     || seller?.phone_no     || "",
-      city:         pendingChange?.pending_city         || seller?.city         || "",
-      postal_code:  pendingChange?.pending_postal_code  || seller?.postal_code  || "",
-      address:      pendingChange?.pending_address      || seller?.address      || "",
-      cnic_number:  pendingChange?.pending_cnic_number  || seller?.cnic_number  || "",
+      phone_no:    pendingChange?.pending_phone_no    || seller?.phone_no    || "",
+      city:        pendingChange?.pending_city        || seller?.city        || "",
+      postal_code: pendingChange?.pending_postal_code || seller?.postal_code || "",
+      address:     pendingChange?.pending_address     || seller?.address     || "",
+      cnic_number: pendingChange?.pending_cnic_number || seller?.cnic_number || "",
       front: null, back: null,
     });
     setFrontPreview(null);
@@ -280,7 +254,6 @@ const ProfilePage = () => {
     try {
       setSaving(true);
 
-      // Upload CNIC images if provided — store PATH not URL (private bucket)
       let frontPath = pendingChange?.pending_cnic_front || null;
       let backPath  = pendingChange?.pending_cnic_back  || null;
 
@@ -288,7 +261,7 @@ const ProfilePage = () => {
         const path = `sellers/${user.id}/front_pending`;
         const { error } = await supabase.storage
           .from("cnic-images").upload(path, sellerApprovalForm.front, { upsert: true });
-        if (error) { alert("Error uploading CNIC front"); return; }
+        if (error) { toast.error("Error uploading CNIC front"); return; }
         frontPath = path;
       }
 
@@ -296,50 +269,51 @@ const ProfilePage = () => {
         const path = `sellers/${user.id}/back_pending`;
         const { error } = await supabase.storage
           .from("cnic-images").upload(path, sellerApprovalForm.back, { upsert: true });
-        if (error) { alert("Error uploading CNIC back"); return; }
+        if (error) { toast.error("Error uploading CNIC back"); return; }
         backPath = path;
       }
 
       const payload = {
-        user_id:              user.id,
-        role:                 "seller",
-        change_type:          "all",
-        pending_phone_no:     sellerApprovalForm.phone_no,
-        pending_city:         sellerApprovalForm.city,
-        pending_postal_code:  sellerApprovalForm.postal_code,
-        pending_address:      sellerApprovalForm.address,
-        pending_cnic_number:  sellerApprovalForm.cnic_number,
-        pending_cnic_front:   frontPath,
-        pending_cnic_back:    backPath,
-        status:               "pending",
+        user_id:             user.id,
+        role:                "seller",
+        change_type:         "all",
+        pending_phone_no:    sellerApprovalForm.phone_no,
+        pending_city:        sellerApprovalForm.city,
+        pending_postal_code: sellerApprovalForm.postal_code,
+        pending_address:     sellerApprovalForm.address,
+        pending_cnic_number: sellerApprovalForm.cnic_number,
+        pending_cnic_front:  frontPath,
+        pending_cnic_back:   backPath,
+        status:              "pending",
       };
 
       if (pendingChange) {
         const { error } = await supabase.from("pending_changes")
           .update(payload).eq("id", pendingChange.id);
-        if (error) { alert("Error submitting changes"); return; }
+        if (error) { toast.error("Error submitting changes"); return; }
       } else {
         const { error } = await supabase.from("pending_changes").insert(payload);
-        if (error) { alert("Error submitting changes"); return; }
+        if (error) { toast.error("Error submitting changes"); return; }
       }
 
-      // Notify admin
       const { data: adminData } = await supabase
         .from("profiles").select("id").eq("role", "admin").single();
       if (adminData) {
         await supabase.from("notifications").insert({
-          user_id: adminData.id,
-          title: "Seller Profile Update Request",
-          message: "A seller has submitted updated contact and CNIC information for approval.",
-          type: "approval", notification_for: "admin", is_read: false,
+          user_id:          adminData.id,
+          title:            "Seller Profile Update Request",
+          message:          "A seller has submitted updated contact and CNIC information for approval.",
+          type:             "approval",
+          notification_for: "admin",
+          is_read:          false,
         });
       }
 
-      alert("Changes submitted for admin approval.");
+      toast.success("Changes submitted for admin approval.");
       setShowSellerApprovalEdit(false);
-      fetchAllData(); // refresh pending change status
-    } catch (err) {
-      toast.error("Something went wrong");
+      fetchAllData();
+    } catch (_) {
+      toast.error("Something went wrong. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -380,7 +354,7 @@ const ProfilePage = () => {
         const path = `buyers/${user.id}/front_pending`;
         const { error } = await supabase.storage
           .from("cnic-images").upload(path, cnicForm.front, { upsert: true });
-        if (error) { alert("Error uploading CNIC front"); return; }
+        if (error) { toast.error("Error uploading CNIC front"); return; }
         frontPath = path;
       }
 
@@ -388,7 +362,7 @@ const ProfilePage = () => {
         const path = `buyers/${user.id}/back_pending`;
         const { error } = await supabase.storage
           .from("cnic-images").upload(path, cnicForm.back, { upsert: true });
-        if (error) { alert("Error uploading CNIC back"); return; }
+        if (error) { toast.error("Error uploading CNIC back"); return; }
         backPath = path;
       }
 
@@ -405,29 +379,30 @@ const ProfilePage = () => {
       if (pendingChange) {
         const { error } = await supabase.from("pending_changes")
           .update(payload).eq("id", pendingChange.id);
-        if (error) { alert("Error submitting CNIC update"); return; }
+        if (error) { toast.error("Error submitting CNIC update"); return; }
       } else {
         const { error } = await supabase.from("pending_changes").insert(payload);
-        if (error) { alert("Error submitting CNIC update"); return; }
+        if (error) { toast.error("Error submitting CNIC update"); return; }
       }
 
-      // Notify admin
       const { data: adminData } = await supabase
         .from("profiles").select("id").eq("role", "admin").single();
       if (adminData) {
         await supabase.from("notifications").insert({
-          user_id: adminData.id,
-          title: "Buyer CNIC Update Request",
-          message: "A buyer has submitted updated CNIC information for approval.",
-          type: "approval", notification_for: "admin", is_read: false,
+          user_id:          adminData.id,
+          title:            "Buyer CNIC Update Request",
+          message:          "A buyer has submitted updated CNIC information for approval.",
+          type:             "approval",
+          notification_for: "admin",
+          is_read:          false,
         });
       }
 
-      alert("CNIC update submitted for admin approval.");
+      toast.success("CNIC update submitted for admin approval.");
       setShowCnicEdit(false);
       fetchAllData();
-    } catch (err) {
-      toast.error("Something went wrong");
+    } catch (_) {
+      toast.error("Something went wrong. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -439,10 +414,10 @@ const ProfilePage = () => {
   };
 
   const getVerificationBadge = (status) => {
-    if (!status || status === "not_submitted") return { label: "Not Verified",   cls: "badge-unverified" };
-    if (status === "pending")                  return { label: "Pending Review",  cls: "badge-pending"   };
-    if (status === "approved")                 return { label: "Verified",        cls: "badge-verified"  };
-    if (status === "rejected")                 return { label: "Rejected",        cls: "badge-rejected"  };
+    if (!status || status === "not_submitted") return { label: "Not Verified",  cls: "badge-unverified" };
+    if (status === "pending")                  return { label: "Pending Review", cls: "badge-pending"   };
+    if (status === "approved")                 return { label: "Verified",       cls: "badge-verified"  };
+    if (status === "rejected")                 return { label: "Rejected",       cls: "badge-rejected"  };
     return { label: "Not Verified", cls: "badge-unverified" };
   };
 
@@ -460,7 +435,7 @@ const ProfilePage = () => {
     );
   }
 
-  const badge     = getVerificationBadge(profile?.id_verified);
+  const badge      = getVerificationBadge(profile?.id_verified);
   const hasPending = !!pendingChange;
 
   return (
@@ -469,7 +444,7 @@ const ProfilePage = () => {
 
       <div className="profile-container">
 
-        {/* ── Avatar + Name ── */}
+        {/* Avatar + Name */}
         <div className="profile-avatar-section">
           <div className="profile-initial-avatar">{getInitial()}</div>
           <div className="profile-name-block">
@@ -485,7 +460,7 @@ const ProfilePage = () => {
 
         <div className="profile-cards">
 
-          {/* ══ ADMIN VIEW ══ */}
+          {/* ADMIN VIEW */}
           {role === "admin" && (
             <div className="profile-card">
               <div className="profile-card-header">
@@ -494,15 +469,14 @@ const ProfilePage = () => {
                   <FaEdit /> Edit
                 </button>
               </div>
-              <ProfileField icon={<FaUser />}    label="Full Name"      value={profile?.name} />
-              <ProfileField icon={<FaEnvelope />} label="Email Address" value={user?.email} />
+              <ProfileField icon={<FaUser />}     label="Full Name"      value={profile?.name} />
+              <ProfileField icon={<FaEnvelope />} label="Email Address"  value={user?.email} />
             </div>
           )}
 
-          {/* ══ SELLER VIEW ══ */}
+          {/* SELLER VIEW */}
           {role === "seller" && (
             <>
-              {/* Card 1 — Basic Info */}
               <div className="profile-card">
                 <div className="profile-card-header">
                   <h3>Basic Information</h3>
@@ -510,12 +484,11 @@ const ProfilePage = () => {
                     <FaEdit /> Edit
                   </button>
                 </div>
-                <ProfileField icon={<FaUser />}     label="Full Name"      value={profile?.name} />
-                <ProfileField icon={<FaEnvelope />} label="Email Address"  value={user?.email} />
-                <ProfileField icon={<FaBuilding />} label="Business Name"  value={seller?.business_name} />
+                <ProfileField icon={<FaUser />}     label="Full Name"     value={profile?.name} />
+                <ProfileField icon={<FaEnvelope />} label="Email Address" value={user?.email} />
+                <ProfileField icon={<FaBuilding />} label="Business Name" value={seller?.business_name} />
               </div>
 
-              {/* Card 2 — Contact & Identity */}
               <div className="profile-card">
                 <div className="profile-card-header">
                   <h3>Contact & Identity</h3>
@@ -528,10 +501,10 @@ const ProfilePage = () => {
                     ⏳ You have changes pending admin approval.
                   </div>
                 )}
-                <ProfileField icon={<FaPhone />}        label="Phone Number"  value={seller?.phone_no} />
-                <ProfileField icon={<FaMapMarkerAlt />} label="City"          value={seller?.city} />
-                <ProfileField icon={<FaMapMarkerAlt />} label="Postal Code"   value={seller?.postal_code} />
-                <ProfileField icon={<FaMapMarkerAlt />} label="Address"       value={seller?.address} />
+                <ProfileField icon={<FaPhone />}        label="Phone Number" value={seller?.phone_no} />
+                <ProfileField icon={<FaMapMarkerAlt />} label="City"         value={seller?.city} />
+                <ProfileField icon={<FaMapMarkerAlt />} label="Postal Code"  value={seller?.postal_code} />
+                <ProfileField icon={<FaMapMarkerAlt />} label="Address"      value={seller?.address} />
                 <div className="profile-field">
                   <div className="field-icon"><FaShieldAlt /></div>
                   <div className="field-content">
@@ -541,7 +514,6 @@ const ProfilePage = () => {
                 </div>
               </div>
 
-              {/* Card 3 — CNIC */}
               <div className="profile-card">
                 <div className="profile-card-header">
                   <h3>Identity Verification</h3>
@@ -557,7 +529,7 @@ const ProfilePage = () => {
             </>
           )}
 
-          {/* ══ BUYER VIEW ══ */}
+          {/* BUYER VIEW */}
           {role === "buyer" && (
             <>
               <div className="profile-card">
@@ -596,7 +568,7 @@ const ProfilePage = () => {
             </>
           )}
 
-          {/* ══ USER VIEW ══ */}
+          {/* USER VIEW */}
           {(role === "user" || !role) && (
             <>
               <div className="profile-card">
@@ -635,7 +607,7 @@ const ProfilePage = () => {
         </button>
       </div>
 
-      {/* ══ Name Edit Modal ══ */}
+      {/* Name Edit Modal */}
       {showPersonalEdit && (
         <div className="profile-modal-overlay" onClick={() => setShowPersonalEdit(false)}>
           <div className="profile-modal" onClick={e => e.stopPropagation()}>
@@ -662,7 +634,7 @@ const ProfilePage = () => {
         </div>
       )}
 
-      {/* ══ Seller: Basic Edit Modal ══ */}
+      {/* Seller Basic Edit Modal */}
       {showSellerBasicEdit && (
         <div className="profile-modal-overlay" onClick={() => setShowSellerBasicEdit(false)}>
           <div className="profile-modal" onClick={e => e.stopPropagation()}>
@@ -697,7 +669,7 @@ const ProfilePage = () => {
         </div>
       )}
 
-      {/* ══ Seller: Contact & CNIC Edit Modal ══ */}
+      {/* Seller Contact & CNIC Edit Modal */}
       {showSellerApprovalEdit && (
         <div className="profile-modal-overlay" onClick={() => setShowSellerApprovalEdit(false)}>
           <div className="profile-modal profile-modal-wide" onClick={e => e.stopPropagation()}>
@@ -709,7 +681,6 @@ const ProfilePage = () => {
               These changes require admin approval before taking effect.
             </p>
             <div className="profile-modal-form">
-
               <div className="profile-modal-row">
                 <div className="profile-modal-field">
                   <label>Phone Number</label>
@@ -726,7 +697,6 @@ const ProfilePage = () => {
                     placeholder="City" />
                 </div>
               </div>
-
               <div className="profile-modal-row">
                 <div className="profile-modal-field">
                   <label>Postal Code</label>
@@ -800,7 +770,7 @@ const ProfilePage = () => {
         </div>
       )}
 
-      {/* ══ Buyer: CNIC Edit Modal ══ */}
+      {/* Buyer CNIC Edit Modal */}
       {showCnicEdit && (
         <div className="profile-modal-overlay" onClick={() => setShowCnicEdit(false)}>
           <div className="profile-modal" onClick={e => e.stopPropagation()}>
@@ -866,17 +836,14 @@ const ProfilePage = () => {
         </div>
       )}
 
-      {/* CnicModal for unverified users */}
       {showCnicModal && (
         <CnicModal closeModal={() => { setShowCnicModal(false); fetchAllData(); }} />
       )}
-
     </div>
   );
 };
 
-// ── Sub-components ────────────────────────────────────────────────
-
+// Sub-components
 const ProfileField = ({ icon, label, value, mono }) => (
   <div className="profile-field">
     <div className="field-icon">{icon}</div>

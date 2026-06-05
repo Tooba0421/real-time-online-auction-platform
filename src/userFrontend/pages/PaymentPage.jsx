@@ -13,14 +13,14 @@ import "../styles/checkout.css";
 const toSlug = (title) =>
   title?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "";
 
-const SHIPPING_FEE     = 250;
-const SERVICE_TAX_PCT  = 0.02;
+const SHIPPING_FEE = 250;
+const SERVICE_TAX_PCT = 0.02;
 const PLATFORM_FEE_PCT = 0.25;
 
 const calcAmounts = (winningBid) => {
-  const serviceTax   = Math.round(winningBid * SERVICE_TAX_PCT);
-  const totalAmount  = winningBid + SHIPPING_FEE + serviceTax;
-  const platformFee  = Math.round(totalAmount * PLATFORM_FEE_PCT);
+  const serviceTax = Math.round(winningBid * SERVICE_TAX_PCT);
+  const totalAmount = winningBid + SHIPPING_FEE + serviceTax;
+  const platformFee = Math.round(totalAmount * PLATFORM_FEE_PCT);
   const sellerAmount = totalAmount - platformFee;
   return { serviceTax, totalAmount, platformFee, sellerAmount };
 };
@@ -28,7 +28,7 @@ const calcAmounts = (winningBid) => {
 // ── Simulated card database ────────────────────────────────────────
 // These mimic real gateway test card behavior
 const SIMULATED_CARDS = {
-  "4242424242424242": { success: true,  message: null },
+  "4242424242424242": { success: true, message: null },
   "4000000000000002": { success: false, message: "Your card was declined." },
   "4000000000009995": { success: false, message: "Insufficient funds on your card." },
   "4000000000000069": { success: false, message: "Your card has expired." },
@@ -66,19 +66,19 @@ const SimulatedPaymentForm = ({ auctionData, winningBid }) => {
   const navigate = useNavigate();
   const { user } = useAuthContext();
 
-  const [cardName,   setCardName]   = useState("");
+  const [cardName, setCardName] = useState("");
   const [cardNumber, setCardNumber] = useState("");
-  const [expiry,     setExpiry]     = useState("");
-  const [cvc,        setCvc]        = useState("");
+  const [expiry, setExpiry] = useState("");
+  const [cvc, setCvc] = useState("");
   const [processing, setProcessing] = useState(false);
-  const [cardError,  setCardError]  = useState("");
+  const [cardError, setCardError] = useState("");
 
   const { serviceTax, totalAmount, platformFee, sellerAmount } =
     calcAmounts(winningBid);
 
   // Format card number with spaces: 4242 4242 4242 4242
   const handleCardNumber = (e) => {
-    const digits    = e.target.value.replace(/\D/g, "").slice(0, 16);
+    const digits = e.target.value.replace(/\D/g, "").slice(0, 16);
     const formatted = digits.match(/.{1,4}/g)?.join(" ") || digits;
     setCardNumber(formatted);
   };
@@ -145,15 +145,15 @@ const SimulatedPaymentForm = ({ auctionData, winningBid }) => {
       const { data: orderData, error: orderError } = await supabase
         .from("orders")
         .insert({
-          auction_id:   auctionData.auctionId,
-          buyer_id:     buyerData.id,
-          seller_id:    auctionData.sellerId,
-          amount:       winningBid,
-          service_tax:  serviceTax,
+          auction_id: auctionData.auctionId,
+          buyer_id: buyerData.id,
+          seller_id: auctionData.sellerId,
+          amount: winningBid,
+          service_tax: serviceTax,
           shipping_fee: SHIPPING_FEE,
           total_amount: totalAmount,
           order_status: "confirmed",
-          order_date:   new Date().toISOString(),
+          order_date: new Date().toISOString(),
         })
         .select()
         .single();
@@ -168,14 +168,14 @@ const SimulatedPaymentForm = ({ auctionData, winningBid }) => {
       const { data: paymentData, error: paymentError } = await supabase
         .from("payments")
         .insert({
-          order_id:     orderData.id,
-          buyer_id:     buyerData.id,
-          seller_id:    auctionData.sellerId,
+          order_id: orderData.id,
+          buyer_id: buyerData.id,
+          seller_id: auctionData.sellerId,
           total_amount: totalAmount,
           platform_fee: platformFee,
-          method:       "card",
-          status:       "paid",
-          hold_status:  true,
+          method: "card",
+          status: "paid",
+          hold_status: true,
           payment_date: new Date().toISOString(),
         })
         .select()
@@ -192,15 +192,15 @@ const SimulatedPaymentForm = ({ auctionData, winningBid }) => {
       holdUntil.setDate(holdUntil.getDate() + 7);
 
       const { error: txError } = await supabase
-  .from("transactions")
-  .insert({
-    payment_id:    paymentData.id,
-    seller_id:     auctionData.sellerId,
-    seller_amount: sellerAmount,
-    total_amount:  totalAmount,
-    status:        "onhold",
-    hold_until:    null, // ← set to null, will be set on delivery
-  });
+        .from("transactions")
+        .insert({
+          payment_id: paymentData.id,
+          seller_id: auctionData.sellerId,
+          seller_amount: sellerAmount,
+          total_amount: totalAmount,
+          status: "onhold",
+          hold_until: null, // ← set to null, will be set on delivery
+        });
 
       if (txError) {
         // Non-critical — log but don't block buyer
@@ -217,27 +217,27 @@ const SimulatedPaymentForm = ({ auctionData, winningBid }) => {
       // ── Step 7: Notify seller ─────────────────────────────────────
       if (auctionData.sellerUserId) {
         await supabase.from("notifications").insert({
-          user_id:          auctionData.sellerUserId,
-          title:            `Payment Received for "${auctionData.title}"`,
-          message:          `The buyer has paid PKR ${totalAmount.toLocaleString()} for "${auctionData.title}". Please ship the item using TCS and enter the tracking number in your Orders page.`,
-          type:             "payment",
+          user_id: auctionData.sellerUserId,
+          title: `Payment Received for "${auctionData.title}"`,
+          message: `The buyer has paid PKR ${totalAmount.toLocaleString()} for "${auctionData.title}". Please ship the item using TCS and enter the tracking number in your Orders page.`,
+          type: "payment",
           notification_for: "seller",
-          auction_id:       auctionData.auctionId,
-          product_slug:     toSlug(auctionData.title),
-          is_read:          false,
+          auction_id: auctionData.auctionId,
+          product_slug: toSlug(auctionData.title),
+          is_read: false,
         });
       }
 
       // ── Step 8: Notify buyer ──────────────────────────────────────
       await supabase.from("notifications").insert({
-        user_id:          user.id,
-        title:            `Payment Successful for "${auctionData.title}"`,
-        message:          `Your payment of PKR ${totalAmount.toLocaleString()} for "${auctionData.title}" was successful. The seller will ship your item soon via TCS courier.`,
-        type:             "payment",
+        user_id: user.id,
+        title: `Payment Successful for "${auctionData.title}"`,
+        message: `Your payment of PKR ${totalAmount.toLocaleString()} for "${auctionData.title}" was successful. The seller will ship your item soon via TCS courier.`,
+        type: "payment",
         notification_for: "buyer",
-        auction_id:       auctionData.auctionId,
-        product_slug:     toSlug(auctionData.title),
-        is_read:          false,
+        auction_id: auctionData.auctionId,
+        product_slug: toSlug(auctionData.title),
+        is_read: false,
       });
 
       toast.success("Payment successful! Your order has been placed.");
