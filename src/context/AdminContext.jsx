@@ -457,7 +457,15 @@ export const AdminProvider = ({ children }) => {
           deliveries ( id, status, tracking_no, courier_service, delivery_date )
         `)
         .order("order_date", { ascending: false });
-      if (!error) setOrders(data || []);
+      if (!error) {
+        setOrders((data || []).map((o) => ({
+          ...o,
+          // ✅ Normalize both deliveries AND payments — Supabase returns
+          // one-to-many joins as arrays even when only one row exists
+          deliveries: Array.isArray(o.deliveries) ? (o.deliveries[0] || null) : o.deliveries,
+          payments: Array.isArray(o.payments) ? (o.payments[0] || null) : o.payments,
+        })));
+      }
     } catch (err) {
       console.error("fetchOrders error:", err);
     } finally {
@@ -661,7 +669,12 @@ export const AdminProvider = ({ children }) => {
         `)
         .eq("id", orderId)
         .single();
-      return error ? null : data;
+      return error ? null : {
+        ...data,
+        // ✅ Normalize both — same array issue applies here too
+        deliveries: Array.isArray(data.deliveries) ? (data.deliveries[0] || null) : data.deliveries,
+        payments: Array.isArray(data.payments) ? (data.payments[0] || null) : data.payments,
+      };
     } catch { return null; }
   }, []);
 

@@ -16,16 +16,15 @@ const OrdersDelivery = () => {
   const { orders, ordersLoading, updateOrderDeliveryLocally, refetchOrders } =
     useSellerContext();
 
-  const [processing,    setProcessing]    = useState(null);
-  const [search,        setSearch]        = useState("");
-  const [deliveryFilter, setDeliveryFilter] = useState("all"); // filter for deliveries table
+  const [processing,     setProcessing]     = useState(null);
+  const [search,         setSearch]         = useState("");
+  const [deliveryFilter, setDeliveryFilter] = useState("all");
 
-  // Tracking number modal
   const [trackingModal, setTrackingModal] = useState(null);
   const [trackingNo,    setTrackingNo]    = useState("");
   const [submitting,    setSubmitting]    = useState(false);
 
-  // Helper — get buyer's user_id (profiles.id) from buyers table
+  // Helper — get buyer's profiles.id (user_id) from buyers table
   const getBuyerUserId = async (buyerId) => {
     const { data } = await supabase
       .from("buyers")
@@ -35,27 +34,22 @@ const OrdersDelivery = () => {
     return data?.user_id || null;
   };
 
-  // ── Split orders into two groups ──────────────────────────────────
-  // pendingOrders  → no delivery record yet OR delivery status = 'pending'
-  // shippedOrders  → delivery status = 'shipped' or 'delivered'
-  // NOTE: 'in_transit' is removed from this system
+  // ── Split orders ──────────────────────────────────────────────────
   const pendingOrders = useMemo(() =>
     orders.filter((o) => {
-      const status = o.deliveries?.status;
-      return !status || status === "pending";
-    }),
-    [orders]
+      const s = o.deliveries?.status;
+      return !s || s === "pending";
+    }), [orders]
   );
 
   const shippedOrders = useMemo(() =>
     orders.filter((o) => {
-      const status = o.deliveries?.status;
-      return status === "shipped" || status === "delivered";
-    }),
-    [orders]
+      const s = o.deliveries?.status;
+      return s === "shipped" || s === "delivered";
+    }), [orders]
   );
 
-  // ── Search + filter for pending orders table ──────────────────────
+  // ── Filtered lists ────────────────────────────────────────────────
   const filteredPending = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return pendingOrders;
@@ -66,7 +60,6 @@ const OrdersDelivery = () => {
     );
   }, [pendingOrders, search]);
 
-  // ── Search + filter for deliveries table ─────────────────────────
   const filteredShipped = useMemo(() => {
     const q = search.trim().toLowerCase();
     return shippedOrders.filter((o) => {
@@ -78,18 +71,13 @@ const OrdersDelivery = () => {
         o.id.toLowerCase().includes(q);
 
       const matchesFilter =
-        deliveryFilter === "all" ||
-        o.deliveries?.status === deliveryFilter;
+        deliveryFilter === "all" || o.deliveries?.status === deliveryFilter;
 
       return matchesSearch && matchesFilter;
     });
   }, [shippedOrders, search, deliveryFilter]);
 
   // ── Submit tracking number ────────────────────────────────────────
-  // When seller enters tracking number:
-  //   → delivery record created with status = 'shipped'
-  //   → order moves from "Pending" table to "Deliveries" table
-  //   → buyer gets notification
   const handleSubmitTracking = async () => {
     if (!trackingNo.trim()) {
       toast.error("Please enter a tracking number");
@@ -98,9 +86,15 @@ const OrdersDelivery = () => {
 
     try {
       setSubmitting(true);
-      const delivery = trackingModal.deliveries;
 
-      if (delivery?.id) {
+      // Check DB directly for existing delivery — don't rely on joined data
+      const { data: existingDelivery } = await supabase
+        .from("deliveries")
+        .select("id")
+        .eq("order_id", trackingModal.id)
+        .maybeSingle();
+
+      if (existingDelivery?.id) {
         // Update existing delivery record
         const { error } = await supabase
           .from("deliveries")
@@ -109,11 +103,15 @@ const OrdersDelivery = () => {
             tracking_no:     trackingNo.trim(),
             courier_service: "TCS",
           })
-          .eq("id", delivery.id);
+          .eq("id", existingDelivery.id);
 
-        if (error) { toast.error("Error updating delivery"); return; }
+        if (error) {
+          toast.error(`Error updating delivery: ${error.message}`);
+          return;
+        }
 
         updateOrderDeliveryLocally(trackingModal.id, {
+          id:              existingDelivery.id,
           status:          "shipped",
           tracking_no:     trackingNo.trim(),
           courier_service: "TCS",
@@ -134,7 +132,10 @@ const OrdersDelivery = () => {
           .select()
           .single();
 
-        if (error) { toast.error("Error creating delivery"); return; }
+        if (error) {
+          toast.error(`Error creating delivery: ${error.message}`);
+          return;
+        }
 
         updateOrderDeliveryLocally(trackingModal.id, {
           id:              newDelivery.id,
@@ -144,26 +145,33 @@ const OrdersDelivery = () => {
         });
       }
 
-      // Notify buyer that order is shipped
-      const buyerUserId = await getBuyerUserId(trackingModal.buyer_id);
-      if (buyerUserId) {
-        await supabase.from("notifications").insert({
-          user_id:          buyerUserId,
-          title:            "Your Order Has Been Shipped! 📦",
-          message:          `Your order for "${trackingModal.auctions?.products?.title}" has been shipped via TCS. Tracking No: ${trackingNo.trim()}. You will be notified once delivered.`,
-          type:             "delivery",
-          notification_for: "buyer",
-          is_read:          false,
-        });
+      // FIX: Notify buyer — wrap in try/catch, NOT .catch()
+      // Supabase client is not a native Promise so .catch() throws
+      try {
+        const buyerUserId = await getBuyerUserId(trackingModal.buyer_id);
+        if (buyerUserId) {
+          await supabase.from("notifications").insert({
+            user_id:          buyerUserId,
+            title:            "Your Order Has Been Shipped! 📦",
+            message:          `Your order for "${trackingModal.auctions?.products?.title}" has been shipped via TCS. Tracking No: ${trackingNo.trim()}.`,
+            type:             "delivery",
+            notification_for: "buyer",
+            is_read:          false,
+          });
+        }
+      } catch (notifErr) {
+        // Non-critical — notification failed but shipment was saved
+        console.error("Notification error (non-critical):", notifErr);
       }
 
-      toast.success("Tracking number saved. Order is now shipped!");
+      // FIX: Close modal and clear state BEFORE toast — no error interrupts this
       setTrackingModal(null);
       setTrackingNo("");
+      toast.success("Tracking number saved. Order is now shipped!");
 
     } catch (err) {
-      console.error(err);
-      toast.error("Something went wrong");
+      console.error("handleSubmitTracking error:", err);
+      toast.error("Something went wrong. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -198,12 +206,9 @@ const OrdersDelivery = () => {
     plugins: { legend: { position: "top", align: "center", labels: { boxWidth: 30, padding: 15 } } },
   };
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return "—";
-    return new Date(dateStr).toLocaleDateString("en-PK", {
-      year: "numeric", month: "short", day: "numeric",
-    });
-  };
+  const formatDate = (d) => !d ? "—" : new Date(d).toLocaleDateString("en-PK", {
+    year: "numeric", month: "short", day: "numeric",
+  });
 
   return (
     <div className="seller-page">
@@ -215,7 +220,7 @@ const OrdersDelivery = () => {
         ))}
       </div>
 
-      {/* ── SEARCH BAR — shared across both tables ─────────────────── */}
+      {/* SEARCH BAR */}
       <div className="page-controls" style={{ marginBottom: "1rem" }}>
         <input
           type="text"
@@ -225,9 +230,20 @@ const OrdersDelivery = () => {
         />
       </div>
 
-      {/* ── TABLE 1: ORDERS AWAITING SHIPMENT ─────────────────────── */}
+      {/* TABLE 1: ORDERS AWAITING SHIPMENT */}
       <div className="seller-section">
-        <h3 className="seller-section-heading">Orders Awaiting Shipment</h3>
+        <h3 className="seller-section-heading">
+          Orders Awaiting Shipment
+          {filteredPending.length > 0 && (
+            <span style={{
+              marginLeft: "10px", fontSize: "13px", fontWeight: "600",
+              background: "#fef3c7", color: "#d97706",
+              padding: "2px 10px", borderRadius: "20px",
+            }}>
+              {filteredPending.length} pending
+            </span>
+          )}
+        </h3>
 
         {ordersLoading ? (
           <div className="loading-state">Loading orders...</div>
@@ -269,8 +285,7 @@ const OrdersDelivery = () => {
                           ? o.buyers.address.length > 25
                             ? o.buyers.address.slice(0, 25) + "..."
                             : o.buyers.address
-                          : "—"
-                        }
+                          : "—"}
                       </span>
                     </td>
                     <td>{o.buyers?.city        || "—"}</td>
@@ -299,12 +314,10 @@ const OrdersDelivery = () => {
         )}
       </div>
 
-      {/* ── TABLE 2: DELIVERIES ───────────────────────────────────── */}
+      {/* TABLE 2: DELIVERIES */}
       <div className="seller-section">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
           <h3 className="seller-section-heading" style={{ margin: 0 }}>Deliveries</h3>
-
-          {/* Filter dropdown for deliveries table */}
           <select
             value={deliveryFilter}
             onChange={(e) => setDeliveryFilter(e.target.value)}
@@ -390,7 +403,7 @@ const OrdersDelivery = () => {
         </div>
       </div>
 
-      {/* ── TRACKING NUMBER MODAL ─────────────────────────────────── */}
+      {/* TRACKING NUMBER MODAL */}
       {trackingModal && (
         <div className="modal-overlay" onClick={() => setTrackingModal(null)}>
           <div className="modal-box" onClick={(e) => e.stopPropagation()}>
@@ -399,15 +412,14 @@ const OrdersDelivery = () => {
               Book your shipment with TCS first, then enter the tracking number below.
             </p>
 
-            {/* Buyer delivery info */}
             <div className="shipping-info">
-              <p><strong>Product:</strong>      {trackingModal.auctions?.products?.title || "—"}</p>
-              <p><strong>Buyer:</strong>         {trackingModal.buyers?.profiles?.name   || "—"}</p>
-              <p><strong>Phone:</strong>          {trackingModal.buyers?.phone_no         || "—"}</p>
-              <p><strong>Address:</strong>        {trackingModal.buyers?.address          || "—"}</p>
-              <p><strong>City:</strong>           {trackingModal.buyers?.city             || "—"}</p>
-              <p><strong>Postal Code:</strong>    {trackingModal.buyers?.postal_code      || "—"}</p>
-              <p><strong>Order Amount:</strong>   PKR {trackingModal.total_amount?.toLocaleString() || "—"}</p>
+              <p><strong>Product:</strong>    {trackingModal.auctions?.products?.title || "—"}</p>
+              <p><strong>Buyer:</strong>       {trackingModal.buyers?.profiles?.name   || "—"}</p>
+              <p><strong>Phone:</strong>        {trackingModal.buyers?.phone_no         || "—"}</p>
+              <p><strong>Address:</strong>      {trackingModal.buyers?.address          || "—"}</p>
+              <p><strong>City:</strong>         {trackingModal.buyers?.city             || "—"}</p>
+              <p><strong>Postal Code:</strong>  {trackingModal.buyers?.postal_code      || "—"}</p>
+              <p><strong>Amount:</strong>       PKR {trackingModal.total_amount?.toLocaleString() || "—"}</p>
             </div>
 
             <input

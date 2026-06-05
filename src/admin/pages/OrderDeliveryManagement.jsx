@@ -18,18 +18,12 @@ ChartJS.register(
   LineElement, ArcElement, Tooltip, Legend, Filler
 );
 
-// ── Delivery flow ─────────────────────────────────────────────────
-// 1. Buyer pays → order created (order_status = "confirmed")
-// 2. Seller enters tracking number → delivery row created (status = "shipped")
-// 3. Admin clicks "Mark Delivered" → delivery status = "delivered",
-//    order_status = "delivered", payment released if still on hold
-
 const OrderDeliveryManagement = () => {
   const { orders, ordersLoading, refetchOrders } = useAdminContext();
 
-  const [search, setSearch]           = useState("");
+  const [search,       setSearch]       = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
-  const [processing, setProcessing]   = useState(null);
+  const [processing,   setProcessing]   = useState(null);
 
   const formatDate = (d) => !d ? "—" : new Date(d).toLocaleDateString("en-PK", {
     year: "numeric", month: "short", day: "numeric",
@@ -38,7 +32,6 @@ const OrderDeliveryManagement = () => {
   const truncate = (text, max = 30) =>
     !text ? "—" : text.length > max ? text.substring(0, max) + "..." : text;
 
-  // ── Mark Delivered (admin action) ────────────────────────────────
   const handleMarkDelivered = async (order) => {
     if (!window.confirm(
       `Confirm delivery for "${order.auctions?.products?.title}"?\n\n` +
@@ -48,7 +41,7 @@ const OrderDeliveryManagement = () => {
     try {
       setProcessing(order.id);
 
-      // ── Step 1: Update delivery status → delivered ────────────────
+      // ── Step 1: Update or create delivery record ──────────────────
       if (order.deliveries?.id) {
         const { error: deliveryErr } = await supabase
           .from("deliveries")
@@ -59,13 +52,11 @@ const OrderDeliveryManagement = () => {
           .eq("id", order.deliveries.id);
 
         if (deliveryErr) {
-          toast.error(`Error updating delivery: ${deliveryErr.message}`);
           console.error("Delivery update error:", deliveryErr);
+          toast.error(`Error updating delivery: ${deliveryErr.message}`);
           return;
         }
       } else {
-        // No delivery record yet (seller skipped entering tracking)
-        // Admin can still mark as delivered — create the record
         const { error: createErr } = await supabase
           .from("deliveries")
           .insert({
@@ -78,30 +69,25 @@ const OrderDeliveryManagement = () => {
           });
 
         if (createErr) {
-          toast.error(`Error creating delivery record: ${createErr.message}`);
           console.error("Delivery insert error:", createErr);
+          toast.error(`Error creating delivery: ${createErr.message}`);
           return;
         }
       }
 
       // ── Step 2: Update order_status → delivered ───────────────────
-      // ✅ FIXED: was "confirmed" — order was already confirmed at payment
-      // Delivery confirmation should set it to "delivered"
       const { error: orderErr } = await supabase
         .from("orders")
         .update({ order_status: "delivered" })
         .eq("id", order.id);
 
       if (orderErr) {
-        toast.error(`Error updating order status: ${orderErr.message}`);
-        console.error("Order update error:", orderErr);
+        console.error("Order status error:", orderErr);
+        toast.error(`Error updating order: ${orderErr.message}`);
         return;
       }
 
       // ── Step 3: Release payment if still on hold ──────────────────
-      // ✅ FIXED: check hold_status first — prevents double-release
-      // if RevenuePayouts admin already manually released it,
-      // or if pg_cron already auto-released after 7 days
       if (order.payments?.id && order.payments?.hold_status === true) {
         const { error: payErr } = await supabase
           .from("payments")
@@ -109,11 +95,9 @@ const OrderDeliveryManagement = () => {
           .eq("id", order.payments.id);
 
         if (payErr) {
-          // Non-critical — delivery is already marked, log and continue
           console.error("Payment release error (non-critical):", payErr);
         }
 
-        // ✅ Also release the transaction if still on hold
         const { error: txErr } = await supabase
           .from("transactions")
           .update({
@@ -121,7 +105,7 @@ const OrderDeliveryManagement = () => {
             release_date: new Date().toISOString(),
           })
           .eq("payment_id", order.payments.id)
-          .eq("status", "onhold"); // ✅ only update if still onhold — guard against double-release
+          .eq("status",     "onhold");
 
         if (txErr) {
           console.error("Transaction release error (non-critical):", txErr);
@@ -130,50 +114,59 @@ const OrderDeliveryManagement = () => {
 
       // ── Step 4: Notify seller ─────────────────────────────────────
       if (order.sellers?.user_id) {
-        await supabase.from("notifications").insert({
-          user_id:          order.sellers.user_id,
-          title:            "Delivery Confirmed — Payment Released! 💰",
-          message:          `The delivery of "${order.auctions?.products?.title}" has been confirmed by admin. Your payment has been released to your account.`,
-          type:             "payment",
-          notification_for: "seller",
-          is_read:          false,
-        }).catch((e) => console.error("Seller notification error (non-critical):", e));
+        try {
+          const { error: sellerNotifErr } = await supabase
+            .from("notifications")
+            .insert({
+              user_id:          order.sellers.user_id,
+              title:            "Delivery Confirmed — Payment Released! 💰",
+              message:          `The delivery of "${order.auctions?.products?.title}" has been confirmed. Your payment has been released.`,
+              type:             "payment",
+              notification_for: "seller",
+              is_read:          false,
+            });
+          if (sellerNotifErr) console.error("Seller notification error:", sellerNotifErr);
+        } catch (sellerNotifEx) {
+          console.error("Seller notification exception:", sellerNotifEx);
+        }
       }
 
       // ── Step 5: Notify buyer ──────────────────────────────────────
-      // Fetch buyer's user_id from buyers table since orders only has buyer_id (buyers.id)
-      const { data: buyerData } = await supabase
-        .from("buyers")
-        .select("user_id")
-        .eq("id", order.buyer_id)
-        .maybeSingle();
+      try {
+        const { data: buyerData } = await supabase
+          .from("buyers")
+          .select("user_id")
+          .eq("id", order.buyer_id)
+          .maybeSingle();
 
-      if (buyerData?.user_id) {
-        await supabase.from("notifications").insert({
-          user_id:          buyerData.user_id,
-          title:            "Your Order Has Been Delivered ✅",
-          message:          `Your order for "${order.auctions?.products?.title}" has been marked as delivered. Thank you for your purchase!`,
-          type:             "delivery",
-          notification_for: "buyer",
-          is_read:          false,
-        }).catch((e) => console.error("Buyer notification error (non-critical):", e));
+        if (buyerData?.user_id) {
+          const { error: buyerNotifErr } = await supabase
+            .from("notifications")
+            .insert({
+              user_id:          buyerData.user_id,
+              title:            "Your Order Has Been Delivered ✅",
+              message:          `Your order for "${order.auctions?.products?.title}" has been marked as delivered. Thank you for shopping with us!`,
+              type:             "delivery",
+              notification_for: "buyer",
+              is_read:          false,
+            });
+          if (buyerNotifErr) console.error("Buyer notification error:", buyerNotifErr);
+        }
+      } catch (buyerNotifEx) {
+        console.error("Buyer notification exception:", buyerNotifEx);
       }
 
-      toast.success("Order marked as delivered and payment released to seller!");
-
-      // Realtime will update via AdminContext channels 9 and 10,
-      // but calling refetchOrders as a safety net
+      toast.success("Order marked as delivered and payment released!");
       setTimeout(() => refetchOrders(), 500);
 
     } catch (err) {
-      console.error("handleMarkDelivered unexpected error:", err);
-      toast.error("Something went wrong. Please try again.");
+      console.error("handleMarkDelivered error:", err);
+      toast.error(`Error: ${err?.message || "Check browser console for details."}`);
     } finally {
       setProcessing(null);
     }
   };
 
-  // ── Filtered orders ───────────────────────────────────────────────
   const filteredOrders = useMemo(() => {
     const q = search.toLowerCase();
     return orders.filter((order) => {
@@ -188,23 +181,20 @@ const OrderDeliveryManagement = () => {
     });
   }, [orders, search, filterStatus]);
 
-  // ── Stats ─────────────────────────────────────────────────────────
   const stats = useMemo(() => ({
     total:     orders.length,
     delivered: orders.filter((o) => o.deliveries?.status === "delivered").length,
     shipped:   orders.filter((o) => o.deliveries?.status === "shipped").length,
-    inTransit: orders.filter((o) => o.deliveries?.status === "in_transit").length,
     pending:   orders.filter((o) => !o.deliveries || o.deliveries?.status === "pending").length,
   }), [orders]);
 
   const statsData = [
     { title: "Total Orders",     value: ordersLoading ? "..." : stats.total,     subtitle: "All recorded orders"     },
-    { title: "Delivered",        value: ordersLoading ? "..." : stats.delivered,  subtitle: "Successfully delivered"  },
-    { title: "Shipped",          value: ordersLoading ? "..." : stats.shipped,    subtitle: "Seller has shipped"      },
-    { title: "Pending Shipment", value: ordersLoading ? "..." : stats.pending,    subtitle: "Awaiting seller to ship" },
+    { title: "Delivered",        value: ordersLoading ? "..." : stats.delivered, subtitle: "Successfully delivered"  },
+    { title: "Shipped",          value: ordersLoading ? "..." : stats.shipped,   subtitle: "Seller has shipped"      },
+    { title: "Pending Shipment", value: ordersLoading ? "..." : stats.pending,   subtitle: "Awaiting seller to ship" },
   ];
 
-  // ── Charts ────────────────────────────────────────────────────────
   const ordersTrend = useMemo(() => {
     const monthly = Array(12).fill(0);
     orders.forEach((o) => {
@@ -213,66 +203,58 @@ const OrderDeliveryManagement = () => {
     return {
       labels: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
       datasets: [{
-        label:           "Orders",
-        data:            monthly,
-        borderColor:     "#2563EB",
-        backgroundColor: "rgba(37,99,235,0.15)",
-        fill:            true,
-        tension:         0.4,
+        label: "Orders", data: monthly,
+        borderColor: "#2563EB", backgroundColor: "rgba(37,99,235,0.15)",
+        fill: true, tension: 0.4,
       }],
     };
   }, [orders]);
 
   const deliveryBreakdown = useMemo(() => ({
-    labels: ["Delivered", "Shipped", "In Transit", "Pending"],
+    labels: ["Delivered", "Shipped", "Pending"],
     datasets: [{
-      data:            [stats.delivered, stats.shipped, stats.inTransit, stats.pending],
-      backgroundColor: ["#10B981", "#8B5CF6", "#3B82F6", "#F59E0B"],
+      data: [stats.delivered, stats.shipped, stats.pending],
+      backgroundColor: ["#10B981", "#3B82F6", "#F59E0B"],
     }],
   }), [stats]);
 
   const doughnutOptions = {
     responsive: true, maintainAspectRatio: false, cutout: "0%",
     layout: { padding: { top: 10, bottom: 30 } },
-    plugins: {
-      legend: { position: "top", align: "center", labels: { boxWidth: 30, padding: 15 } },
-    },
+    plugins: { legend: { position: "top", align: "center", labels: { boxWidth: 30, padding: 15 } } },
   };
 
   const lineOptions = {
     responsive: true, maintainAspectRatio: false,
-    plugins: {
-      legend: { position: "top", align: "center", labels: { boxWidth: 30, padding: 15 } },
-    },
+    plugins: { legend: { position: "top", align: "center", labels: { boxWidth: 30, padding: 15 } } },
   };
 
-  // ── Delivery status helpers ───────────────────────────────────────
   const getDeliveryLabel = (status) => {
-    if (status === "shipped")    return "Shipped";
-    if (status === "in_transit") return "In Transit";
-    if (status === "delivered")  return "Delivered";
-    if (status === "failed")     return "Failed";
+    if (status === "shipped")   return "Shipped";
+    if (status === "delivered") return "Delivered";
+    if (status === "failed")    return "Failed";
     return "Pending";
   };
 
-  // Admin can mark delivered only when seller has shipped
-  // (status = shipped OR in_transit)
-  const canMarkDelivered = (order) => {
-    const s = order.deliveries?.status;
-    return s === "shipped" || s === "in_transit";
+  const getOrderStatusLabel = (status) => {
+    if (status === "confirmed")  return "Confirmed";
+    if (status === "cancelled")  return "Cancelled";
+    if (status === "delivered")  return "Delivered";
+    return "Pending";
   };
+
+  // Only shipped orders can be marked delivered — in_transit removed
+  const canMarkDelivered = (order) => order.deliveries?.status === "shipped";
 
   return (
     <div className="admin-page">
 
-      {/* STAT CARDS */}
       <div className="stats-grid">
         {statsData.map((item, i) => (
           <StatCard key={i} title={item.title} value={item.value} subtitle={item.subtitle} />
         ))}
       </div>
 
-      {/* ORDERS TABLE */}
       <div className="admin-section">
         <h3 className="admin-section-heading">Orders & Deliveries</h3>
 
@@ -283,11 +265,11 @@ const OrderDeliveryManagement = () => {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+          {/* in_transit removed from filter — enum value no longer exists */}
           <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
             <option value="all">All Status</option>
             <option value="pending">Pending</option>
             <option value="shipped">Shipped</option>
-            <option value="in_transit">In Transit</option>
             <option value="delivered">Delivered</option>
             <option value="failed">Failed</option>
           </select>
@@ -305,6 +287,7 @@ const OrderDeliveryManagement = () => {
                   <th>Seller</th>
                   <th>Amount</th>
                   <th>Service Tax</th>
+                  <th>Shipping</th>
                   <th>Total</th>
                   <th>Payment</th>
                   <th>Order Status</th>
@@ -317,9 +300,7 @@ const OrderDeliveryManagement = () => {
               </thead>
               <tbody>
                 {filteredOrders.length === 0 ? (
-                  <tr>
-                    <td colSpan="13" className="empty-row">No orders found</td>
-                  </tr>
+                  <tr><td colSpan="14" className="empty-row">No orders found</td></tr>
                 ) : filteredOrders.map((order) => (
                   <tr key={order.id}>
                     <td title={order.auctions?.products?.title}>
@@ -327,32 +308,29 @@ const OrderDeliveryManagement = () => {
                     </td>
                     <td>{order.buyers?.profiles?.name  || "—"}</td>
                     <td>{order.sellers?.profiles?.name || "—"}</td>
-                    <td>PKR {order.amount?.toLocaleString()}</td>
-                    <td>PKR {order.service_tax?.toLocaleString()}</td>
-                    <td>PKR {order.total_amount?.toLocaleString()}</td>
 
-                    {/* Payment status */}
+                    {/* amount, service_tax, shipping_fee — all exist in orders table per schema */}
+                    <td>PKR {order.amount?.toLocaleString()       || "—"}</td>
+                    <td>PKR {order.service_tax?.toLocaleString()  || "—"}</td>
+                    <td>PKR {order.shipping_fee?.toLocaleString() || "—"}</td>
+                    <td>PKR {order.total_amount?.toLocaleString() || "—"}</td>
+
                     <td>
                       <StatusBadge
-                        label={order.payments?.status || "pending"}
-                        type={order.payments?.status  || "pending"}
+                        label={order.payments?.status
+                          ? order.payments.status.charAt(0).toUpperCase() + order.payments.status.slice(1)
+                          : "Pending"}
+                        type={order.payments?.status || "pending"}
                       />
                     </td>
 
-                    {/* Order status */}
                     <td>
                       <StatusBadge
-                        label={
-                          order.order_status
-                            ? order.order_status.charAt(0).toUpperCase() +
-                              order.order_status.slice(1)
-                            : "—"
-                        }
-                        type={order.order_status}
+                        label={getOrderStatusLabel(order.order_status)}
+                        type={order.order_status || "pending"}
                       />
                     </td>
 
-                    {/* Delivery status */}
                     <td>
                       <StatusBadge
                         label={getDeliveryLabel(order.deliveries?.status)}
@@ -364,7 +342,6 @@ const OrderDeliveryManagement = () => {
                     <td>{order.deliveries?.tracking_no     || "—"}</td>
                     <td>{formatDate(order.order_date)}</td>
 
-                    {/* Action column */}
                     <td className="actions">
                       {canMarkDelivered(order) ? (
                         <ActionButton
@@ -391,7 +368,6 @@ const OrderDeliveryManagement = () => {
         )}
       </div>
 
-      {/* CHARTS */}
       <div className="overview-grid">
         <div className="chart-box">
           <h3 className="admin-section-heading">Orders Trend</h3>

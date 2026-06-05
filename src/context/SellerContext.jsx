@@ -102,7 +102,7 @@ export const SellerProvider = ({ children }) => {
       const rows = data || [];
 
       // Collect IDs for parallel enrichment
-      const productIds        = rows.map((a) => a.products?.id).filter(Boolean);
+      const productIds = rows.map((a) => a.products?.id).filter(Boolean);
       const endedWithWinnerIds = rows
         .filter((a) => a.status === "ended" && a.winner_id)
         .map((a) => a.winner_id);
@@ -112,16 +112,16 @@ export const SellerProvider = ({ children }) => {
         // Rejection reasons for products
         productIds.length
           ? supabase.from("admin_actions")
-              .select("target_id, remarks")
-              .in("target_id", productIds)
-              .eq("action_type", "reject")
+            .select("target_id, remarks")
+            .in("target_id", productIds)
+            .eq("action_type", "reject")
           : { data: [] },
 
         // Winner names — buyers joined to profiles
         endedWithWinnerIds.length
           ? supabase.from("buyers")
-              .select("id, profiles ( name )")
-              .in("id", endedWithWinnerIds)
+            .select("id, profiles ( name )")
+            .in("id", endedWithWinnerIds)
           : { data: [] },
 
         // ✅ FIX: payments has order_id → orders.id (one-to-one reverse FK)
@@ -130,8 +130,8 @@ export const SellerProvider = ({ children }) => {
         // payments.status and payments.total_amount must be selected explicitly.
         auctionIds.length
           ? supabase.from("orders")
-              .select("auction_id, order_status, payments ( id, status, total_amount )")
-              .in("auction_id", auctionIds)
+            .select("auction_id, order_status, payments ( id, status, total_amount )")
+            .in("auction_id", auctionIds)
           : { data: [] },
       ]);
 
@@ -145,7 +145,7 @@ export const SellerProvider = ({ children }) => {
       const orderMap = {};
       orderRes.data?.forEach((o) => {
         orderMap[o.auction_id] = {
-          orderStatus:   o.order_status,
+          orderStatus: o.order_status,
           // ✅ FIX: payments is an ARRAY (one order can have one payment but Supabase
           // returns it as array for has-many direction). Use [0] to get first element.
           paymentStatus: Array.isArray(o.payments)
@@ -158,8 +158,8 @@ export const SellerProvider = ({ children }) => {
         rows.map((a) => ({
           ...a,
           rejectionReason: reasonMap[a.products?.id] || null,
-          winnerName:      winnerMap[a.winner_id]    || null,
-          orderInfo:       orderMap[a.id]            || null,
+          winnerName: winnerMap[a.winner_id] || null,
+          orderInfo: orderMap[a.id] || null,
         }))
       );
     } catch (err) {
@@ -181,7 +181,7 @@ export const SellerProvider = ({ children }) => {
         .select("id, status, highest_bid, end_time, products ( title )")
         .eq("seller_id", id);
 
-      const auctionIds  = auctionData?.map((a) => a.id) || [];
+      const auctionIds = auctionData?.map((a) => a.id) || [];
       const activeCount = auctionData?.filter((a) =>
         ["live", "paused"].includes(a.status)).length || 0;
 
@@ -191,8 +191,8 @@ export const SellerProvider = ({ children }) => {
       const [bidsRes, revenueRes, pendingRes, bidsPerDayRes] = await Promise.all([
         auctionIds.length
           ? supabase.from("bids")
-              .select("*", { count: "exact", head: true })
-              .in("auction_id", auctionIds)
+            .select("*", { count: "exact", head: true })
+            .in("auction_id", auctionIds)
           : { count: 0 },
         supabase.from("transactions")
           .select("seller_amount")
@@ -202,13 +202,13 @@ export const SellerProvider = ({ children }) => {
           .eq("seller_id", id).eq("status", "onhold"),
         auctionIds.length
           ? supabase.from("bids")
-              .select("bid_time")
-              .in("auction_id", auctionIds)
-              .gte("bid_time", sevenDaysAgo.toISOString())
+            .select("bid_time")
+            .in("auction_id", auctionIds)
+            .gte("bid_time", sevenDaysAgo.toISOString())
           : { data: [] },
       ]);
 
-      const totalRevenue  = revenueRes.data?.reduce((s, t) => s + (t.seller_amount || 0), 0) || 0;
+      const totalRevenue = revenueRes.data?.reduce((s, t) => s + (t.seller_amount || 0), 0) || 0;
       const pendingPayout = pendingRes.data?.reduce((s, t) => s + (t.seller_amount || 0), 0) || 0;
 
       const daily = Array(7).fill(0);
@@ -230,10 +230,10 @@ export const SellerProvider = ({ children }) => {
 
       setStats({
         activeListings: activeCount,
-        totalBids:      bidsRes.count || 0,
+        totalBids: bidsRes.count || 0,
         totalRevenue,
         pendingPayout,
-        bidsPerDay:  daily,
+        bidsPerDay: daily,
         latestEnded,
         topAuction,
       });
@@ -270,8 +270,16 @@ export const SellerProvider = ({ children }) => {
         console.error("fetchOrders error:", error);
         return;
       }
-      // ✅ FIX: removed stray console.log("Orders Data:", data)
-      setOrders(data || []);
+      // ✅ Normalize deliveries from array to single object
+      
+      setOrders(
+        (data || []).map((o) => ({
+          ...o,
+          deliveries: Array.isArray(o.deliveries)
+            ? (o.deliveries[0] || null)
+            : o.deliveries,
+        }))
+      );
     } catch (err) {
       console.error("fetchOrders exception:", err);
     } finally {
@@ -396,7 +404,7 @@ export const SellerProvider = ({ children }) => {
 
   const teardownSubscriptions = () => {
     channelsRef.current.forEach((ch) => {
-      try { supabase.removeChannel(ch); } catch (_) {}
+      try { supabase.removeChannel(ch); } catch (_) { }
     });
     channelsRef.current = [];
   };
@@ -422,16 +430,16 @@ export const SellerProvider = ({ children }) => {
     <SellerContext.Provider value={{
       sellerId, sellerLoading,
       auctions, auctionsLoading,
-      refetchAuctions:  () => fetchAuctions(sellerIdRef.current),
+      refetchAuctions: () => fetchAuctions(sellerIdRef.current),
       updateAuctionLocally,
       stats, statsLoading,
-      refetchStats:     () => fetchStats(sellerIdRef.current),
+      refetchStats: () => fetchStats(sellerIdRef.current),
       orders, ordersLoading,
-      refetchOrders:    () => fetchOrders(sellerIdRef.current),
+      refetchOrders: () => fetchOrders(sellerIdRef.current),
       updateOrderDeliveryLocally,
       transactions, transactionsLoading,
       refetchTransactions: () => fetchTransactions(sellerIdRef.current),
-      refetchAll:       () => fetchAllData(sellerIdRef.current),
+      refetchAll: () => fetchAllData(sellerIdRef.current),
     }}>
       {children}
     </SellerContext.Provider>
