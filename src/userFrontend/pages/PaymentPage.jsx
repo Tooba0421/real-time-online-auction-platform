@@ -192,15 +192,15 @@ const SimulatedPaymentForm = ({ auctionData, winningBid }) => {
       holdUntil.setDate(holdUntil.getDate() + 7);
 
       const { error: txError } = await supabase
-        .from("transactions")
-        .insert({
-          payment_id:    paymentData.id,
-          seller_id:     auctionData.sellerId,
-          seller_amount: sellerAmount,
-          total_amount:  totalAmount,
-          status:        "onhold",
-          hold_until:    holdUntil.toISOString(),
-        });
+  .from("transactions")
+  .insert({
+    payment_id:    paymentData.id,
+    seller_id:     auctionData.sellerId,
+    seller_amount: sellerAmount,
+    total_amount:  totalAmount,
+    status:        "onhold",
+    hold_until:    null, // ← set to null, will be set on delivery
+  });
 
       if (txError) {
         // Non-critical — log but don't block buyer

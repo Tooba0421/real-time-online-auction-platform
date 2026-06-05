@@ -21,9 +21,9 @@ ChartJS.register(
 const OrderDeliveryManagement = () => {
   const { orders, ordersLoading, refetchOrders } = useAdminContext();
 
-  const [search,       setSearch]       = useState("");
+  const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
-  const [processing,   setProcessing]   = useState(null);
+  const [processing, setProcessing] = useState(null);
 
   const formatDate = (d) => !d ? "—" : new Date(d).toLocaleDateString("en-PK", {
     year: "numeric", month: "short", day: "numeric",
@@ -46,7 +46,7 @@ const OrderDeliveryManagement = () => {
         const { error: deliveryErr } = await supabase
           .from("deliveries")
           .update({
-            status:        "delivered",
+            status: "delivered",
             delivery_date: new Date().toISOString(),
           })
           .eq("id", order.deliveries.id);
@@ -60,12 +60,12 @@ const OrderDeliveryManagement = () => {
         const { error: createErr } = await supabase
           .from("deliveries")
           .insert({
-            order_id:        order.id,
-            buyer_id:        order.buyer_id,
-            seller_id:       order.seller_id,
-            status:          "delivered",
+            order_id: order.id,
+            buyer_id: order.buyer_id,
+            seller_id: order.seller_id,
+            status: "delivered",
             courier_service: "TCS",
-            delivery_date:   new Date().toISOString(),
+            delivery_date: new Date().toISOString(),
           });
 
         if (createErr) {
@@ -98,14 +98,16 @@ const OrderDeliveryManagement = () => {
           console.error("Payment release error (non-critical):", payErr);
         }
 
+        const holdUntil = new Date();
+        holdUntil.setDate(holdUntil.getDate() + 7);
+
         const { error: txErr } = await supabase
           .from("transactions")
           .update({
-            status:       "released",
-            release_date: new Date().toISOString(),
+            hold_until: holdUntil.toISOString(), // 7 days from delivery date
           })
           .eq("payment_id", order.payments.id)
-          .eq("status",     "onhold");
+          .eq("status", "onhold");
 
         if (txErr) {
           console.error("Transaction release error (non-critical):", txErr);
@@ -118,12 +120,12 @@ const OrderDeliveryManagement = () => {
           const { error: sellerNotifErr } = await supabase
             .from("notifications")
             .insert({
-              user_id:          order.sellers.user_id,
-              title:            "Delivery Confirmed — Payment Released! 💰",
-              message:          `The delivery of "${order.auctions?.products?.title}" has been confirmed. Your payment has been released.`,
-              type:             "payment",
+              user_id: order.sellers.user_id,
+              title: "Delivery Confirmed — Payment Released! 💰",
+              message: `The delivery of "${order.auctions?.products?.title}" has been confirmed. Your payment has been released.`,
+              type: "payment",
               notification_for: "seller",
-              is_read:          false,
+              is_read: false,
             });
           if (sellerNotifErr) console.error("Seller notification error:", sellerNotifErr);
         } catch (sellerNotifEx) {
@@ -143,12 +145,12 @@ const OrderDeliveryManagement = () => {
           const { error: buyerNotifErr } = await supabase
             .from("notifications")
             .insert({
-              user_id:          buyerData.user_id,
-              title:            "Your Order Has Been Delivered ✅",
-              message:          `Your order for "${order.auctions?.products?.title}" has been marked as delivered. Thank you for shopping with us!`,
-              type:             "delivery",
+              user_id: buyerData.user_id,
+              title: "Your Order Has Been Delivered ✅",
+              message: `Your order for "${order.auctions?.products?.title}" has been marked as delivered. Thank you for shopping with us!`,
+              type: "delivery",
               notification_for: "buyer",
-              is_read:          false,
+              is_read: false,
             });
           if (buyerNotifErr) console.error("Buyer notification error:", buyerNotifErr);
         }
@@ -172,27 +174,27 @@ const OrderDeliveryManagement = () => {
     return orders.filter((order) => {
       const matchesSearch =
         order.auctions?.products?.title?.toLowerCase().includes(q) ||
-        order.buyers?.profiles?.name?.toLowerCase().includes(q)    ||
-        order.sellers?.profiles?.name?.toLowerCase().includes(q)   ||
+        order.buyers?.profiles?.name?.toLowerCase().includes(q) ||
+        order.sellers?.profiles?.name?.toLowerCase().includes(q) ||
         order.id?.toLowerCase().includes(q);
       const deliveryStatus = order.deliveries?.status || "pending";
-      const matchesStatus  = filterStatus === "all" || deliveryStatus === filterStatus;
+      const matchesStatus = filterStatus === "all" || deliveryStatus === filterStatus;
       return matchesSearch && matchesStatus;
     });
   }, [orders, search, filterStatus]);
 
   const stats = useMemo(() => ({
-    total:     orders.length,
+    total: orders.length,
     delivered: orders.filter((o) => o.deliveries?.status === "delivered").length,
-    shipped:   orders.filter((o) => o.deliveries?.status === "shipped").length,
-    pending:   orders.filter((o) => !o.deliveries || o.deliveries?.status === "pending").length,
+    shipped: orders.filter((o) => o.deliveries?.status === "shipped").length,
+    pending: orders.filter((o) => !o.deliveries || o.deliveries?.status === "pending").length,
   }), [orders]);
 
   const statsData = [
-    { title: "Total Orders",     value: ordersLoading ? "..." : stats.total,     subtitle: "All recorded orders"     },
-    { title: "Delivered",        value: ordersLoading ? "..." : stats.delivered, subtitle: "Successfully delivered"  },
-    { title: "Shipped",          value: ordersLoading ? "..." : stats.shipped,   subtitle: "Seller has shipped"      },
-    { title: "Pending Shipment", value: ordersLoading ? "..." : stats.pending,   subtitle: "Awaiting seller to ship" },
+    { title: "Total Orders", value: ordersLoading ? "..." : stats.total, subtitle: "All recorded orders" },
+    { title: "Delivered", value: ordersLoading ? "..." : stats.delivered, subtitle: "Successfully delivered" },
+    { title: "Shipped", value: ordersLoading ? "..." : stats.shipped, subtitle: "Seller has shipped" },
+    { title: "Pending Shipment", value: ordersLoading ? "..." : stats.pending, subtitle: "Awaiting seller to ship" },
   ];
 
   const ordersTrend = useMemo(() => {
@@ -201,7 +203,7 @@ const OrderDeliveryManagement = () => {
       if (o.order_date) monthly[new Date(o.order_date).getMonth()]++;
     });
     return {
-      labels: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
+      labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
       datasets: [{
         label: "Orders", data: monthly,
         borderColor: "#2563EB", backgroundColor: "rgba(37,99,235,0.15)",
@@ -230,16 +232,16 @@ const OrderDeliveryManagement = () => {
   };
 
   const getDeliveryLabel = (status) => {
-    if (status === "shipped")   return "Shipped";
+    if (status === "shipped") return "Shipped";
     if (status === "delivered") return "Delivered";
-    if (status === "failed")    return "Failed";
+    if (status === "failed") return "Failed";
     return "Pending";
   };
 
   const getOrderStatusLabel = (status) => {
-    if (status === "confirmed")  return "Confirmed";
-    if (status === "cancelled")  return "Cancelled";
-    if (status === "delivered")  return "Delivered";
+    if (status === "confirmed") return "Confirmed";
+    if (status === "cancelled") return "Cancelled";
+    if (status === "delivered") return "Delivered";
     return "Pending";
   };
 
@@ -306,12 +308,12 @@ const OrderDeliveryManagement = () => {
                     <td title={order.auctions?.products?.title}>
                       {truncate(order.auctions?.products?.title)}
                     </td>
-                    <td>{order.buyers?.profiles?.name  || "—"}</td>
+                    <td>{order.buyers?.profiles?.name || "—"}</td>
                     <td>{order.sellers?.profiles?.name || "—"}</td>
 
                     {/* amount, service_tax, shipping_fee — all exist in orders table per schema */}
-                    <td>PKR {order.amount?.toLocaleString()       || "—"}</td>
-                    <td>PKR {order.service_tax?.toLocaleString()  || "—"}</td>
+                    <td>PKR {order.amount?.toLocaleString() || "—"}</td>
+                    <td>PKR {order.service_tax?.toLocaleString() || "—"}</td>
                     <td>PKR {order.shipping_fee?.toLocaleString() || "—"}</td>
                     <td>PKR {order.total_amount?.toLocaleString() || "—"}</td>
 
@@ -339,7 +341,7 @@ const OrderDeliveryManagement = () => {
                     </td>
 
                     <td>{order.deliveries?.courier_service || "—"}</td>
-                    <td>{order.deliveries?.tracking_no     || "—"}</td>
+                    <td>{order.deliveries?.tracking_no || "—"}</td>
                     <td>{formatDate(order.order_date)}</td>
 
                     <td className="actions">

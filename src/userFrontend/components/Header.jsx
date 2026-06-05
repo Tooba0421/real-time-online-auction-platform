@@ -79,13 +79,13 @@ const Header = () => {
     navigate(`/search?q=${searchQuery}`);
   };
 
-  const goToHome       = () => navigate("/");
+  const goToHome = () => navigate("/");
   const goToNotifications = () => navigate("/notifications");
-  const goToCategory   = (cat) => navigate(`/category/${encodeURIComponent(cat)}`);
+  const goToCategory = (cat) => navigate(`/category/${encodeURIComponent(cat)}`);
 
   const getAvatarLetter = () => {
     if (profile?.name) return profile.name.charAt(0).toUpperCase();
-    if (user?.email)   return user.email.charAt(0).toUpperCase();
+    if (user?.email) return user.email.charAt(0).toUpperCase();
     return null;
   };
 
@@ -136,11 +136,15 @@ const Header = () => {
                       <div
                         key={item.id}
                         className="fav-item"
-                        onClick={() =>
-                          navigate(`/product/${item.id}`, {
-                            state: { product: item, products: [] },
-                          })
-                        }
+                        // FIX: navigate to slug-based auction URL, not /product/:id
+                        onClick={() => {
+                          const slug = item.title
+                            ?.toLowerCase()
+                            .replace(/[^a-z0-9]+/g, "-")
+                            .replace(/(^-|-$)/g, "") || "";
+                          navigate(`/auction/${slug}`);
+                          setShowFav(false);
+                        }}
                       >
                         <img src={item.image} alt={item.title} />
                         <div className="fav-info">

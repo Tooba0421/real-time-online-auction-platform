@@ -13,7 +13,10 @@ import ActionButton from "../../common/components/ActionButton";
 import "../styles/adminLayout.css";
 import "../styles/revenuePayouts.css";
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Tooltip, Legend, Filler);
+ChartJS.register(
+  CategoryScale, LinearScale, PointElement,
+  LineElement, ArcElement, Tooltip, Legend, Filler
+);
 
 const RevenuePayouts = () => {
   const {
@@ -28,8 +31,9 @@ const RevenuePayouts = () => {
   const [processing, setProcessing] = useState(null);
 
   const handleRelease = async (transaction) => {
-    const sellerName = transaction.sellers?.profiles?.name
-      || transaction.sellers?.business_name || "the seller";
+    const sellerName =
+      transaction.sellers?.profiles?.name ||
+      transaction.sellers?.business_name  || "the seller";
     const amount = transaction.seller_amount?.toLocaleString() || 0;
 
     if (!window.confirm(
@@ -39,7 +43,7 @@ const RevenuePayouts = () => {
     try {
       setProcessing(transaction.id);
 
-      // ✅ Optimistic update — row moves to released immediately in UI
+      // Optimistic update — row moves to released immediately in UI
       updateTransactionLocally(transaction.id, {
         status:       "released",
         release_date: new Date().toISOString(),
@@ -57,7 +61,7 @@ const RevenuePayouts = () => {
       if (txErr) {
         toast.error(`Error releasing transaction: ${txErr.message}`);
         console.error("Transaction release error:", txErr);
-        refetchRevenue(); // rollback optimistic update
+        refetchRevenue();
         return;
       }
 
@@ -68,23 +72,23 @@ const RevenuePayouts = () => {
         .eq("id", transaction.payment_id);
 
       if (payErr) {
-        // Non-critical — transaction status is the source of truth
         console.error("Payment hold_status update error (non-critical):", payErr);
       }
 
       // ── Notify seller ─────────────────────────────────────────────
-      // ✅ FIXED: removed logAdminAction — "release_payment" is not in
-      // admin_action_type enum (approve, reject, suspend only)
-      // which was causing a 400 error on every release
       if (transaction.sellers?.user_id) {
-        await supabase.from("notifications").insert({
-          user_id:          transaction.sellers.user_id,
-          title:            "Payment Released! 💰",
-          message:          `PKR ${amount} has been released to your account for the completed auction.`,
-          type:             "payment",
-          notification_for: "seller",
-          is_read:          false,
-        }).catch((e) => console.error("Notification error (non-critical):", e));
+        try {
+          await supabase.from("notifications").insert({
+            user_id:          transaction.sellers.user_id,
+            title:            "Payment Released! 💰",
+            message:          `PKR ${amount} has been released to your account for the completed auction.`,
+            type:             "payment",
+            notification_for: "seller",
+            is_read:          false,
+          });
+        } catch (notifErr) {
+          console.error("Notification error (non-critical):", notifErr);
+        }
       }
 
       toast.success(`PKR ${amount} released to ${sellerName}!`);
@@ -102,22 +106,31 @@ const RevenuePayouts = () => {
     year: "numeric", month: "short", day: "numeric",
   });
 
-  const truncateText = (text, maxLength = 30) => {
-    if (!text) return "—";
-    return text.length > maxLength ? text.substring(0, maxLength) + "..." : text;
+  const truncateText = (text, maxLength = 30) =>
+    !text ? "—" : text.length > maxLength ? text.substring(0, maxLength) + "..." : text;
+
+  // ── Hold until label ──────────────────────────────────────────────
+  // hold_until is null until delivery is confirmed by admin.
+  // After delivery, it is set to delivery_date + 7 days.
+  const getHoldUntilLabel = (holdUntil) => {
+    if (!holdUntil) return "Awaiting delivery";
+    const date    = new Date(holdUntil);
+    const now     = new Date();
+    const isPast  = date <= now;
+    return isPast
+      ? `${formatDate(holdUntil)} (eligible for release)`
+      : formatDate(holdUntil);
   };
 
   // ── Revenue calculations ──────────────────────────────────────────
-  // Total revenue = ALL payments received (held + released)
   const totalRevenue = payments
     .reduce((s, p) => s + (p.total_amount || 0), 0);
 
-  // Platform earnings = only from released payments (hold_status = false)
   const totalPlatformEarnings = payments
     .filter((p) => p.hold_status === false)
     .reduce((s, p) => s + (p.platform_fee || 0), 0);
 
-  const pendingPayouts  = pendingTransactions
+  const pendingPayouts = pendingTransactions
     .reduce((s, t) => s + (t.seller_amount || 0), 0);
 
   const releasedPayouts = releasedTransactions
@@ -137,7 +150,7 @@ const RevenuePayouts = () => {
     {
       title:    "Pending Payouts",
       value:    revenueLoading ? "..." : `PKR ${pendingPayouts.toLocaleString()}`,
-      subtitle: "Held — not yet released to sellers",
+      subtitle: "Held — released 7 days after delivery",
     },
     {
       title:    "Released to Sellers",
@@ -207,16 +220,27 @@ const RevenuePayouts = () => {
   return (
     <div className="admin-page">
 
-      {/* STAT CARDS */}
       <div className="stats-grid">
         {statsData.map((item, i) => (
           <StatCard key={i} title={item.title} value={item.value} subtitle={item.subtitle} />
         ))}
       </div>
 
-      {/* PENDING PAYOUTS TABLE */}
+      {/* PENDING PAYOUTS */}
       <div className="admin-section">
         <h3 className="admin-section-heading">Pending Payouts</h3>
+
+        {/* Info banner explaining the hold logic */}
+        <div style={{
+          background: "#eff6ff", border: "1px solid #bfdbfe",
+          borderRadius: "8px", padding: "10px 16px",
+          fontSize: "13px", color: "#1e40af", marginBottom: "16px",
+        }}>
+          💡 Payments are held for <strong>7 days after delivery is confirmed</strong>.
+          The "Release After" date is set when admin marks the order as delivered.
+          You can manually release early using the Release button.
+        </div>
+
         {revenueLoading ? (
           <div className="loading-state">Loading transactions...</div>
         ) : (
@@ -232,7 +256,7 @@ const RevenuePayouts = () => {
                   <th>Platform Fee</th>
                   <th>Seller Amount</th>
                   <th>Payment Date</th>
-                  <th>Hold Until</th>
+                  <th>Release After</th>
                   <th>Status</th>
                   <th>Action</th>
                 </tr>
@@ -244,37 +268,57 @@ const RevenuePayouts = () => {
                       No pending payouts. All payments have been released.
                     </td>
                   </tr>
-                ) : pendingTransactions.map((t) => (
-                  <tr key={t.id}>
-                    <td>{t.sellers?.profiles?.name || "—"}</td>
-                    <td>{t.sellers?.business_name  || "—"}</td>
-                    <td title={t.payments?.orders?.auctions?.products?.title}>
-                      {truncateText(t.payments?.orders?.auctions?.products?.title)}
-                    </td>
-                    <td>{t.payments?.orders?.buyers?.profiles?.name || "—"}</td>
-                    <td>PKR {t.total_amount?.toLocaleString()}</td>
-                    <td>PKR {(t.payments?.platform_fee || 0).toLocaleString()}</td>
-                    <td>PKR {t.seller_amount?.toLocaleString()}</td>
-                    <td>{formatDate(t.payments?.payment_date)}</td>
-                    <td>{formatDate(t.hold_until)}</td>
-                    <td><StatusBadge label="On Hold" type="pending" /></td>
-                    <td className="actions">
-                      <ActionButton
-                        label={processing === t.id ? "Releasing..." : "Release"}
-                        variant="success"
-                        onClick={() => handleRelease(t)}
-                        disabled={processing === t.id}
-                      />
-                    </td>
-                  </tr>
-                ))}
+                ) : pendingTransactions.map((t) => {
+                  // Check if hold period has passed — eligible for auto release
+                  const holdDate    = t.hold_until ? new Date(t.hold_until) : null;
+                  const isEligible  = holdDate && holdDate <= new Date();
+
+                  return (
+                    <tr key={t.id} style={isEligible ? { background: "#f0fdf4" } : {}}>
+                      <td>{t.sellers?.profiles?.name || "—"}</td>
+                      <td>{t.sellers?.business_name  || "—"}</td>
+                      <td title={t.payments?.orders?.auctions?.products?.title}>
+                        {truncateText(t.payments?.orders?.auctions?.products?.title)}
+                      </td>
+                      <td>{t.payments?.orders?.buyers?.profiles?.name || "—"}</td>
+                      <td>PKR {t.total_amount?.toLocaleString()}</td>
+                      <td>PKR {(t.payments?.platform_fee || 0).toLocaleString()}</td>
+                      <td>PKR {t.seller_amount?.toLocaleString()}</td>
+                      <td>{formatDate(t.payments?.payment_date)}</td>
+                      <td>
+                        {/* FIX: show delivery-based hold date, not order date */}
+                        <span style={{
+                          color: isEligible ? "#16a34a" : "#6b7280",
+                          fontWeight: isEligible ? "600" : "400",
+                          fontSize: "13px",
+                        }}>
+                          {getHoldUntilLabel(t.hold_until)}
+                        </span>
+                      </td>
+                      <td>
+                        <StatusBadge
+                          label={isEligible ? "Ready" : "On Hold"}
+                          type={isEligible ? "approved" : "pending"}
+                        />
+                      </td>
+                      <td className="actions">
+                        <ActionButton
+                          label={processing === t.id ? "Releasing..." : "Release"}
+                          variant="success"
+                          onClick={() => handleRelease(t)}
+                          disabled={processing === t.id}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
-      {/* RELEASED PAYOUTS TABLE */}
+      {/* RELEASED PAYOUTS */}
       <div className="admin-section">
         <h3 className="admin-section-heading">Released Payouts</h3>
         {revenueLoading ? (
