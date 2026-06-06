@@ -82,7 +82,7 @@ const CnicModal = ({ closeModal }) => {
         .upload(frontPath, front, { upsert: true });
 
       if (frontError) {
-        toast.error("Error uploading front image");
+        toast.error(`Front upload failed: ${frontError.message}`);
         return;
       }
 
@@ -99,7 +99,6 @@ const CnicModal = ({ closeModal }) => {
       const submissionPayload = {
         user_id: user.id,
         cnic_number: cnic,
-        email: user.email,
         status: "pending",
       };
 
@@ -122,7 +121,7 @@ const CnicModal = ({ closeModal }) => {
           .insert(submissionPayload);
 
         if (insertError) {
-          toast.error("Error submitting CNIC");
+          toast.error(`Submit failed: ${insertError.message}`);
           return;
         }
       }
