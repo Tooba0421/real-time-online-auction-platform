@@ -230,17 +230,6 @@ const RevenuePayouts = () => {
       <div className="admin-section">
         <h3 className="admin-section-heading">Pending Payouts</h3>
 
-        {/* Info banner explaining the hold logic */}
-        <div style={{
-          background: "#eff6ff", border: "1px solid #bfdbfe",
-          borderRadius: "8px", padding: "10px 16px",
-          fontSize: "13px", color: "#1e40af", marginBottom: "16px",
-        }}>
-          💡 Payments are held for <strong>7 days after delivery is confirmed</strong>.
-          The "Release After" date is set when admin marks the order as delivered.
-          You can manually release early using the Release button.
-        </div>
-
         {revenueLoading ? (
           <div className="loading-state">Loading transactions...</div>
         ) : (

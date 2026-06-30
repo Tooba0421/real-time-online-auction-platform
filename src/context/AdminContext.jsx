@@ -272,10 +272,30 @@ export const AdminProvider = ({ children }) => {
         email: s.email || s.profiles?.email || "—",
         submissionId: s.id,
       })));
-      setRejectedSubmissions((rejectedRes.data || []).map((s) => ({
+      const rejectedRows = rejectedRes.data || [];
+
+      // Fetch rejection reasons for rejected submissions
+      let bidderReasonMap = {};
+      const rejectedSubIds = rejectedRows.map((s) => s.id).filter(Boolean);
+      if (rejectedSubIds.length > 0) {
+        const { data: rejectActions } = await supabase
+          .from("admin_actions")
+          .select("target_id, remarks")
+          .in("target_id", rejectedSubIds)
+          .eq("action_type", "reject")
+          .eq("target_table", "pending_cnic_submissions")
+          .order("action_date", { ascending: false });
+        rejectActions?.forEach((a) => {
+          if (!bidderReasonMap[a.target_id]) bidderReasonMap[a.target_id] = a.remarks;
+        });
+      }
+
+      setRejectedSubmissions(rejectedRows.map((s) => ({
         ...s,
         name: s.profiles?.name || "—",
         email: s.email || s.profiles?.email || "—",
+        submissionId: s.id,
+        reason: bidderReasonMap[s.id] || null,  
       })));
 
       const buyerRows = buyerRes.data || [];
