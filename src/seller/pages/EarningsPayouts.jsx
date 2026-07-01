@@ -6,8 +6,7 @@ import "../styles/sellerLayout.css";
 import "../styles/earningsPayouts.css";
 
 const EarningsPayouts = () => {
-  // ✅ Read from shared context — no local fetch, realtime handled by SellerContext
-  const { transactions, transactionsLoading } = useSellerContext();
+  const { transactions, transactionsLoading, sellerProfile } = useSellerContext();
 
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -34,10 +33,10 @@ const EarningsPayouts = () => {
 
   // ── Stats ────────────────────────────────────────────────────────
   const stats = useMemo(() => {
-    const totalRevenue   = transactions.reduce((s, t) => s + (t.total_amount    || 0), 0);
-    const totalEarnings  = transactions.reduce((s, t) => s + (t.seller_amount   || 0), 0);
-    const totalCommission= transactions.reduce((s, t) => s + (t.payments?.platform_fee || 0), 0);
-    const pendingPayout  = transactions
+    const totalRevenue = transactions.reduce((s, t) => s + (t.total_amount || 0), 0);
+    const totalEarnings = transactions.reduce((s, t) => s + (t.seller_amount || 0), 0);
+    const totalCommission = transactions.reduce((s, t) => s + (t.payments?.platform_fee || 0), 0);
+    const pendingPayout = transactions
       .filter((t) => t.status === "onhold")
       .reduce((s, t) => s + (t.seller_amount || 0), 0);
     const releasedPayout = transactions

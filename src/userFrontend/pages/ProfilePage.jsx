@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   FaEdit, FaUser, FaEnvelope, FaIdCard, FaShieldAlt,
   FaSignOutAlt, FaTimes, FaUpload, FaCheckCircle,
-  FaBuilding, FaPhone, FaMapMarkerAlt,
+  FaBuilding, FaPhone, FaMapMarkerAlt, FaMobileAlt,
 } from "react-icons/fa";
 import { supabase } from "../../supabase/supabase";
 import { logout } from "../../supabase/authService";
@@ -226,6 +226,7 @@ const ProfilePage = () => {
   const openSellerApprovalEdit = () => {
     setSellerApprovalForm({
       phone_no: pendingChange?.pending_phone_no || seller?.phone_no || "",
+      jazzcash_number: pendingChange?.pending_jazzcash_number || seller?.jazzcash_number || "",
       city: pendingChange?.pending_city || seller?.city || "",
       postal_code: pendingChange?.pending_postal_code || seller?.postal_code || "",
       address: pendingChange?.pending_address || seller?.address || "",
@@ -251,6 +252,14 @@ const ProfilePage = () => {
   };
 
   const handleSaveSellerApproval = async () => {
+    // Validate JazzCash number if provided
+    if (sellerApprovalForm.jazzcash_number) {
+      const jcNum = sellerApprovalForm.jazzcash_number.replace(/\s/g, "");
+      if (!/^03[0-9]{9}$/.test(jcNum)) {
+        toast.error("JazzCash number must start with 03 and be exactly 11 digits");
+        return;
+      }
+    }
     try {
       setSaving(true);
 
@@ -278,6 +287,7 @@ const ProfilePage = () => {
         role: "seller",
         change_type: "all",
         pending_phone_no: sellerApprovalForm.phone_no,
+        pending_jazzcash_number: sellerApprovalForm.jazzcash_number,
         pending_city: sellerApprovalForm.city,
         pending_postal_code: sellerApprovalForm.postal_code,
         pending_address: sellerApprovalForm.address,
@@ -508,6 +518,7 @@ const ProfilePage = () => {
                   </div>
                 )}
                 <ProfileField icon={<FaPhone />} label="Phone Number" value={seller?.phone_no} />
+                <ProfileField icon={<FaMobileAlt />} label="JazzCash Number" value={seller?.jazzcash_number} />
                 <ProfileField icon={<FaMapMarkerAlt />} label="City" value={seller?.city} />
                 <ProfileField icon={<FaMapMarkerAlt />} label="Postal Code" value={seller?.postal_code} />
                 <ProfileField icon={<FaMapMarkerAlt />} label="Address" value={seller?.address} />
@@ -696,14 +707,27 @@ const ProfilePage = () => {
                     placeholder="03XX-XXXXXXX" />
                 </div>
                 <div className="profile-modal-field">
+                  <label>JazzCash Mobile Number</label>                           {/* ADD THIS FIELD */}
+                  <input
+                    type="tel"
+                    className="profile-modal-input"
+                    value={sellerApprovalForm.jazzcash_number || ""}
+                    onChange={e => {
+                      const val = e.target.value.replace(/[^0-9]/g, "").slice(0, 11);
+                      setSellerApprovalForm(p => ({ ...p, jazzcash_number: val }));
+                    }}
+                    maxLength={11}
+                    placeholder="03001234567" />
+                </div>
+              </div>
+              <div className="profile-modal-row">
+                <div className="profile-modal-field">
                   <label>City</label>
                   <input className="profile-modal-input"
                     value={sellerApprovalForm.city || ""}
                     onChange={e => setSellerApprovalForm(p => ({ ...p, city: e.target.value }))}
                     placeholder="City" />
                 </div>
-              </div>
-              <div className="profile-modal-row">
                 <div className="profile-modal-field">
                   <label>Postal Code</label>
                   <input className="profile-modal-input"
@@ -711,13 +735,13 @@ const ProfilePage = () => {
                     onChange={e => setSellerApprovalForm(p => ({ ...p, postal_code: e.target.value }))}
                     placeholder="Postal code" />
                 </div>
-                <div className="profile-modal-field">
-                  <label>Address</label>
-                  <input className="profile-modal-input"
-                    value={sellerApprovalForm.address || ""}
-                    onChange={e => setSellerApprovalForm(p => ({ ...p, address: e.target.value }))}
-                    placeholder="Full address" />
-                </div>
+              </div>
+              <div className="profile-modal-field">
+                <label>Address</label>
+                <input className="profile-modal-input"
+                  value={sellerApprovalForm.address || ""}
+                  onChange={e => setSellerApprovalForm(p => ({ ...p, address: e.target.value }))}
+                  placeholder="Full address" />
               </div>
 
               <div className="profile-modal-section-label">Identity Verification</div>

@@ -351,6 +351,29 @@
   flex-shrink: 0;
 }
 
+/* ─── JazzCash Account Field ─────────────────────────────────────── */
+
+.jazzcash-label-note {
+  font-size: 11px;
+  color: #888;
+  font-weight: normal;
+  margin-left: 8px;
+}
+
+.jazzcash-hint {
+  font-size: 11px;
+  margin-top: 4px;
+  display: block;
+}
+
+.jazzcash-hint--error {
+  color: #ef4444;
+}
+
+.jazzcash-hint--success {
+  color: #10b981;
+}
+
 @keyframes formSpin {
   to {
     transform: rotate(360deg);

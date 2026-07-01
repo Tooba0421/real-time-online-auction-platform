@@ -30,19 +30,19 @@ const SellerManagement = () => {
     refetchSellers, refetchSellerEdits,
   } = useAdminContext();
 
-  const pendingSellers  = sellers?.pending  || [];
+  const pendingSellers = sellers?.pending || [];
   const approvedSellers = sellers?.approved || [];
   const rejectedSellers = sellers?.rejected || [];
 
   // CNIC view modal — used by both pending sellers and edit requests
-  const [cnicModal,        setCnicModal]        = useState(null); // { name, user_id, frontPath, backPath }
-  const [cnicUrls,         setCnicUrls]         = useState({ front: null, back: null });
-  const [cnicLoading,      setCnicLoading]      = useState(false);
+  const [cnicModal, setCnicModal] = useState(null); // { name, user_id, frontPath, backPath }
+  const [cnicUrls, setCnicUrls] = useState({ front: null, back: null });
+  const [cnicLoading, setCnicLoading] = useState(false);
 
   // Reject modals
-  const [rejectModal,      setRejectModal]      = useState(null); // { seller, type: 'seller' | 'edit' }
-  const [rejectReason,     setRejectReason]     = useState("");
-  const [processing,       setProcessing]       = useState(null);
+  const [rejectModal, setRejectModal] = useState(null); // { seller, type: 'seller' | 'edit' }
+  const [rejectReason, setRejectReason] = useState("");
+  const [processing, setProcessing] = useState(null);
 
   // ── View CNIC images ──────────────────────────────────────────────
   const handleViewCnic = async ({ name, user_id, frontPath, backPath }) => {
@@ -92,7 +92,7 @@ const SellerManagement = () => {
 
       await supabase.from("notifications").insert({
         user_id: seller.user_id,
-        title:   "Seller Application Approved! 🎉",
+        title: "Seller Application Approved! 🎉",
         message: "Your seller application has been approved. You can now list products and create auctions.",
         type: "approval", notification_for: "seller", is_read: false,
       });
@@ -121,7 +121,7 @@ const SellerManagement = () => {
       await logAdminAction(user.id, "reject", seller.id, "sellers", rejectReason.trim());
       await supabase.from("notifications").insert({
         user_id: seller.user_id,
-        title:   "Seller Application Rejected",
+        title: "Seller Application Rejected",
         message: `Your seller application was rejected. Reason: ${rejectReason.trim()}`,
         type: "approval", notification_for: "seller", is_read: false,
       });
@@ -144,13 +144,14 @@ const SellerManagement = () => {
       setProcessing(edit.id);
 
       const payload = {};
-      if (edit.pending_phone_no)    payload.phone_no    = edit.pending_phone_no;
-      if (edit.pending_city)        payload.city        = edit.pending_city;
+      if (edit.pending_phone_no) payload.phone_no = edit.pending_phone_no;
+      if (edit.pending_city) payload.city = edit.pending_city;
       if (edit.pending_postal_code) payload.postal_code = edit.pending_postal_code;
-      if (edit.pending_address)     payload.address     = edit.pending_address;
+      if (edit.pending_address) payload.address = edit.pending_address;
       if (edit.pending_cnic_number) payload.cnic_number = edit.pending_cnic_number;
-      if (edit.pending_cnic_front)  payload.cnic_front  = edit.pending_cnic_front;
-      if (edit.pending_cnic_back)   payload.cnic_back   = edit.pending_cnic_back;
+      if (edit.pending_cnic_front) payload.cnic_front = edit.pending_cnic_front;
+      if (edit.pending_cnic_back) payload.cnic_back = edit.pending_cnic_back;
+      if (edit.pending_jazzcash_number) payload.jazzcash_number = edit.pending_jazzcash_number;
 
       const { error } = await supabase.from("sellers")
         .update(payload).eq("user_id", edit.user_id);
@@ -161,7 +162,7 @@ const SellerManagement = () => {
       await logAdminAction(user.id, "approve", edit.id, "sellers", "Seller profile update approved");
       await supabase.from("notifications").insert({
         user_id: edit.user_id,
-        title:   "Profile Update Approved ✅",
+        title: "Profile Update Approved ✅",
         message: "Your profile update request has been approved and your information has been updated.",
         type: "approval", notification_for: "seller", is_read: false,
       });
@@ -189,7 +190,7 @@ const SellerManagement = () => {
       await logAdminAction(user.id, "reject", edit.id, "sellers", rejectReason.trim());
       await supabase.from("notifications").insert({
         user_id: edit.user_id,
-        title:   "Profile Update Rejected",
+        title: "Profile Update Rejected",
         message: `Your profile update was rejected. Reason: ${rejectReason.trim()}`,
         type: "approval", notification_for: "seller", is_read: false,
       });
@@ -221,15 +222,15 @@ const SellerManagement = () => {
   });
 
   const totalApproved = approvedSellers.length;
-  const totalPending  = pendingSellers.length;
+  const totalPending = pendingSellers.length;
   const totalRejected = rejectedSellers.length;
   const totalListings = approvedSellers.reduce((s, x) => s + (x.listings || 0), 0);
 
   const statsData = [
     { title: "Approved Sellers", value: sellersLoading ? "..." : totalApproved, subtitle: "Currently active sellers" },
-    { title: "Pending Requests", value: sellersLoading ? "..." : totalPending,  subtitle: "Awaiting verification"    },
-    { title: "Rejected",         value: sellersLoading ? "..." : totalRejected, subtitle: "Rejected sellers"         },
-    { title: "Total Listings",   value: sellersLoading ? "..." : totalListings, subtitle: "From approved sellers"    },
+    { title: "Pending Requests", value: sellersLoading ? "..." : totalPending, subtitle: "Awaiting verification" },
+    { title: "Rejected", value: sellersLoading ? "..." : totalRejected, subtitle: "Rejected sellers" },
+    { title: "Total Listings", value: sellersLoading ? "..." : totalListings, subtitle: "From approved sellers" },
   ];
 
   const sellerStatusData = useMemo(() => ({
@@ -271,6 +272,7 @@ const SellerManagement = () => {
                   <th>Address</th>
                   <th>CNIC No</th>
                   <th>View CNIC</th>
+                  <th>JazzCash No.</th>
                   <th>Request Date</th>
                   <th>Actions</th>
                 </tr>
@@ -290,15 +292,17 @@ const SellerManagement = () => {
                         <span
                           className="view-image-link"
                           onClick={() => handleViewCnic({
-                            name:      s.name,
-                            user_id:   s.user_id,
+                            name: s.name,
+                            user_id: s.user_id,
                             frontPath: `sellers/${s.user_id}/front`,
-                            backPath:  `sellers/${s.user_id}/back`,
+                            backPath: `sellers/${s.user_id}/back`,
                           })}
                         >
                           View CNIC
                         </span>
                       </td>
+                      <td>{s.jazzcash_number || "—"}</td>
+
                       <td>{formatDate(s.created_at)}</td>
                       <td className="actions">
                         <ActionButton label="Approve" variant="success"
@@ -331,6 +335,7 @@ const SellerManagement = () => {
                   <th>New Address</th>
                   <th>New CNIC No</th>
                   <th>View New CNIC</th>
+                  <th>New JazzCash No.</th>
                   <th>Submitted</th>
                   <th>Actions</th>
                 </tr>
@@ -342,8 +347,8 @@ const SellerManagement = () => {
                     <tr key={edit.id}>
                       <td>{edit.userName}</td>
                       <td>{edit.userEmail}</td>
-                      <td>{edit.pending_phone_no   || "—"}</td>
-                      <td>{edit.pending_city        || "—"}</td>
+                      <td>{edit.pending_phone_no || "—"}</td>
+                      <td>{edit.pending_city || "—"}</td>
                       <td className="long-text" title={edit.pending_address}>
                         {edit.pending_address || "—"}
                       </td>
@@ -354,10 +359,10 @@ const SellerManagement = () => {
                           <span
                             className="view-image-link"
                             onClick={() => handleViewCnic({
-                              name:      edit.userName,
-                              user_id:   edit.user_id,
+                              name: edit.userName,
+                              user_id: edit.user_id,
                               frontPath: edit.pending_cnic_front || `sellers/${edit.user_id}/front_pending`,
-                              backPath:  edit.pending_cnic_back  || `sellers/${edit.user_id}/back_pending`,
+                              backPath: edit.pending_cnic_back || `sellers/${edit.user_id}/back_pending`,
                             })}
                           >
                             View CNIC
@@ -366,6 +371,7 @@ const SellerManagement = () => {
                           <span style={{ color: "#999", fontSize: "12px" }}>Not updated</span>
                         )}
                       </td>
+                      <td>{edit.pending_jazzcash_number || "—"}</td>
                       <td>{formatDate(edit.created_at)}</td>
                       <td className="actions">
                         <ActionButton label="Approve" variant="success"
@@ -394,6 +400,7 @@ const SellerManagement = () => {
                   <th>Seller</th>
                   <th>Email</th>
                   <th>Business</th>
+                  <th>JazzCash No.</th>
                   <th>Listings</th>
                   <th>Success Rate</th>
                   <th>Earnings</th>
@@ -408,6 +415,7 @@ const SellerManagement = () => {
                       <td>{s.name}</td>
                       <td>{s.email}</td>
                       <td>{s.business_name}</td>
+                      <td>{s.jazzcash_number || "—"}</td>
                       <td>{s.listings}</td>
                       <td>{s.successRate}</td>
                       <td>{s.earnings}</td>

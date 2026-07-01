@@ -8,6 +8,7 @@ export const SellerProvider = ({ children }) => {
   const { user } = useAuthContext();
 
   const [sellerId, setSellerId] = useState(null);
+  const [sellerProfile, setSellerProfile] = useState(null);
   const [sellerLoading, setSellerLoading] = useState(true);
 
   const [auctions, setAuctions] = useState([]);
@@ -38,13 +39,12 @@ export const SellerProvider = ({ children }) => {
     setSellerLoading(true);
     const { data, error } = await supabase
       .from("sellers")
-      .select("id")
+      .select("id, jazzcash_number, business_name, phone_no, city, address, postal_code, description, cnic_number, is_verified")
       .eq("user_id", user.id)
       .single();
 
     if (error || !data) {
       setSellerLoading(false);
-      // ✅ FIX: Reset loading states so pages don't hang forever
       setAuctionsLoading(false);
       setOrdersLoading(false);
       setTransactionsLoading(false);
@@ -54,6 +54,8 @@ export const SellerProvider = ({ children }) => {
 
     setSellerId(data.id);
     sellerIdRef.current = data.id;
+    // Store full seller profile including jazzcash_number
+    setSellerProfile(data);
     setSellerLoading(false);
   };
 
@@ -271,7 +273,7 @@ export const SellerProvider = ({ children }) => {
         return;
       }
       // ✅ Normalize deliveries from array to single object
-      
+
       setOrders(
         (data || []).map((o) => ({
           ...o,
@@ -427,20 +429,23 @@ export const SellerProvider = ({ children }) => {
   }, []);
 
   return (
-    <SellerContext.Provider value={{
-      sellerId, sellerLoading,
-      auctions, auctionsLoading,
-      refetchAuctions: () => fetchAuctions(sellerIdRef.current),
-      updateAuctionLocally,
-      stats, statsLoading,
-      refetchStats: () => fetchStats(sellerIdRef.current),
-      orders, ordersLoading,
-      refetchOrders: () => fetchOrders(sellerIdRef.current),
-      updateOrderDeliveryLocally,
-      transactions, transactionsLoading,
-      refetchTransactions: () => fetchTransactions(sellerIdRef.current),
-      refetchAll: () => fetchAllData(sellerIdRef.current),
-    }}>
+  <SellerContext.Provider value={{
+    sellerId, sellerLoading,
+    // sellerProfile includes jazzcash_number, business_name, phone_no etc.
+    // Use this wherever seller's own profile data is needed in seller portal
+    sellerProfile, setSellerProfile,
+    auctions, auctionsLoading,
+    refetchAuctions: () => fetchAuctions(sellerIdRef.current),
+    updateAuctionLocally,
+    stats, statsLoading,
+    refetchStats: () => fetchStats(sellerIdRef.current),
+    orders, ordersLoading,
+    refetchOrders: () => fetchOrders(sellerIdRef.current),
+    updateOrderDeliveryLocally,
+    transactions, transactionsLoading,
+    refetchTransactions: () => fetchTransactions(sellerIdRef.current),
+    refetchAll: () => fetchAllData(sellerIdRef.current),
+  }}>
       {children}
     </SellerContext.Provider>
   );

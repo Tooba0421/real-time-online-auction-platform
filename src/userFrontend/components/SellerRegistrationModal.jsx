@@ -19,6 +19,8 @@ const SellerRegistrationModal = ({ closeModal }) => {
     postalCode: "",
     address: "",
     description: "",
+    // JazzCash account number — stored for future JazzCash API integration
+    jazzcashAccount: "",
     cnicFront: null,
     cnicBack: null,
   });
@@ -44,7 +46,10 @@ const SellerRegistrationModal = ({ closeModal }) => {
         if (existing) {
           if (existing.is_verified === "pending") {
             setAlreadyPending(true);
-          } else if (existing.is_verified === "rejected" || existing.is_verified === "suspended") {
+          } else if (
+            existing.is_verified === "rejected" ||
+            existing.is_verified === "suspended"
+          ) {
             // Allow resubmission — store the existing id to update instead of insert
             setExistingSellerId(existing.id);
           }
@@ -72,9 +77,18 @@ const SellerRegistrationModal = ({ closeModal }) => {
 
   const handleCnicChange = (e) => {
     let val = e.target.value.replace(/[^0-9]/g, "");
-    if (val.length > 5 && val.length <= 12) val = val.slice(0, 5) + "-" + val.slice(5);
-    else if (val.length > 12) val = val.slice(0, 5) + "-" + val.slice(5, 12) + "-" + val.slice(12, 13);
+    if (val.length > 5 && val.length <= 12)
+      val = val.slice(0, 5) + "-" + val.slice(5);
+    else if (val.length > 12)
+      val = val.slice(0, 5) + "-" + val.slice(5, 12) + "-" + val.slice(12, 13);
     setCnic(val);
+  };
+
+  // JazzCash mobile account numbers are 11-digit Pakistani numbers (03XX-XXXXXXX)
+  // Validate: must start with 03 and be exactly 11 digits
+  const validateJazzCash = (number) => {
+    const digits = number.replace(/[^0-9]/g, "");
+    return digits.length === 11 && digits.startsWith("03");
   };
 
   const handleSubmit = async (e) => {
@@ -87,6 +101,16 @@ const SellerRegistrationModal = ({ closeModal }) => {
     }
     if (cnic.length < 15) {
       toast.error("Please enter a valid CNIC number");
+      return;
+    }
+
+    // Validate JazzCash account number
+    if (!formData.jazzcashAccount.trim()) {
+      toast.error("Please enter your JazzCash account number");
+      return;
+    }
+    if (!validateJazzCash(formData.jazzcashAccount)) {
+      toast.error("JazzCash account must be a valid 11-digit Pakistani mobile number starting with 03");
       return;
     }
 
@@ -122,6 +146,8 @@ const SellerRegistrationModal = ({ closeModal }) => {
         postal_code: formData.postalCode,
         phone_no: formData.phone,
         description: formData.description,
+        // Store JazzCash number — ready for JazzCash API integration later
+        jazzcash_number: formData.jazzcashAccount.trim(),
         cnic_number: cnic,
         cnic_front: `sellers/${user.id}/front`,
         cnic_back: `sellers/${user.id}/back`,
@@ -306,6 +332,43 @@ const SellerRegistrationModal = ({ closeModal }) => {
             />
           </div>
 
+          {/* ── JazzCash Account Number ───────────────────────────────────── */}
+          {/* This will be used when JazzCash API is integrated for payouts.   */}
+          {/* Format: 11-digit Pakistani mobile number e.g. 03001234567        */}
+          <div className="form-field">
+            <label className="form-label">
+              JazzCash Account Number
+              <span className="jazzcash-label-note">
+                (used for receiving payouts)
+              </span>
+            </label>
+            <input
+              className="auth-input"
+              type="text"
+              name="jazzcashAccount"
+              maxLength={11}
+              required
+              onChange={(e) => {
+                // Only allow digits
+                const val = e.target.value.replace(/[^0-9]/g, "");
+                setFormData({ ...formData, jazzcashAccount: val });
+              }}
+              value={formData.jazzcashAccount}
+            />
+            {formData.jazzcashAccount.length > 0 &&
+              !validateJazzCash(formData.jazzcashAccount) && (
+                <span className="jazzcash-hint jazzcash-hint--error">
+                  Must be an 11-digit number starting with 03
+                </span>
+              )}
+            {formData.jazzcashAccount.length === 11 &&
+              validateJazzCash(formData.jazzcashAccount) && (
+                <span className="jazzcash-hint jazzcash-hint--success">
+                  ✓ Valid JazzCash number
+                </span>
+              )}
+          </div>
+
           <div className="form-field">
             <label className="form-label">CNIC Number</label>
             <input
@@ -338,8 +401,14 @@ const SellerRegistrationModal = ({ closeModal }) => {
                   </>
                 )}
               </label>
-              <input id="seller-cnic-front" type="file" name="cnicFront"
-                accept="image/*" style={{ display: "none" }} onChange={handleChange} />
+              <input
+                id="seller-cnic-front"
+                type="file"
+                name="cnicFront"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={handleChange}
+              />
             </div>
 
             <div className="form-upload-box">
@@ -361,8 +430,14 @@ const SellerRegistrationModal = ({ closeModal }) => {
                   </>
                 )}
               </label>
-              <input id="seller-cnic-back" type="file" name="cnicBack"
-                accept="image/*" style={{ display: "none" }} onChange={handleChange} />
+              <input
+                id="seller-cnic-back"
+                type="file"
+                name="cnicBack"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={handleChange}
+              />
             </div>
           </div>
 
