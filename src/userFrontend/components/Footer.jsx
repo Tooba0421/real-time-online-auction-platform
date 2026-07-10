@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import LoginModal from "./LoginModal";
 import "../styles/footer.css";
+import websiteLogo from "../../assets/websiteLogo2.png";
+
 import {
   FaInstagram,
   FaLinkedin,
@@ -17,6 +19,8 @@ const Footer = () => {
   // ✅ FIX 1: Add state
   const [showLogin, setShowLogin] = useState(false);
 
+  const goToHome = () => navigate("/");
+
   return (
     <>
       <footer className="footer">
@@ -25,10 +29,16 @@ const Footer = () => {
 
           {/* COLUMN 1 */}
           <div className="footer-column">
-            <img src="/Images/pt_logo.png" alt="Logo" className="footer-logo" />
-
+            <div className="logo" onClick={goToHome}>
+              <img
+                src={websiteLogo}
+                alt="BidWave"
+                className="footer-logo"
+              />
+              <h3 className="footer-logo-name">BidWave</h3>
+            </div>
             <p>
-              Auctions is a real-time online auction platform where users can
+              BidWave is a real-time online auction platform where users can
               bid on artwork, interiors, antiques, and more with full
               transparency and security.
             </p>

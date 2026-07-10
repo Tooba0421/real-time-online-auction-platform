@@ -3,6 +3,16 @@
   color: var(--color-card);
 }
 
+.footer-logo-name {
+  margin: 0 0.5rem;
+  font-weight: 600;
+  background: linear-gradient(90deg, var(--color-gold), var(--color-gold-dark));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-size: 1.25rem;
+}
+
 /* ===== CTA SECTION ===== */
 .footer-cta {
   display: flex;
@@ -82,18 +92,20 @@
 
 /* LOGO */
 .footer-logo {
-  width: 140px;
-  margin-bottom: 15px;
+  width: 50px;
+  /* margin-bottom: 5px; */
 }
 
 .footer-column p {
   font-size: 14px;
   line-height: 1.6;
+  text-align: justify;
+  width: 90%;
 }
 
 /* CONTACT */
 .contact-info p {
-  font-size: 13px;
+  font-size: 14px;
   display: flex;
   align-items: center;
   gap: 8px;

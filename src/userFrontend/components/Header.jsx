@@ -9,6 +9,7 @@ import ForgotPasswordModal from "./ForgotPasswordModal";
 import { FaBell, FaHeart, FaSearch, FaBars } from "react-icons/fa";
 import { useAuthContext } from "../../context/AuthContext";
 import { supabase } from "../../supabase/supabase";
+import websiteLogo from "../../assets/websiteLogo2.jpg";
 
 const Header = () => {
   const navigate = useNavigate();
@@ -102,11 +103,11 @@ const Header = () => {
           />
           <div className="logo" onClick={goToHome}>
             <img
-              src="https://i.pravatar.cc/40?img=12"
-              alt="Auctions"
+              src={websiteLogo}
+              alt="BidWave"
               className="logo-pic"
             />
-            <h4 className="logo-name">Auctions</h4>
+            <h4 className="logo-name">BidWave</h4>
           </div>
         </div>
 
