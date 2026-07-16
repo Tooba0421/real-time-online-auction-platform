@@ -265,7 +265,7 @@ const HomePage = () => {
 
       {/* Why Choose */}
       <section className="why-section">
-        <h2>Why Choose Auctions?</h2>
+        <h2>Why Choose BidWave?</h2>
         <div className="why-container">
           <div className="why-card">
             <div className="why-icon"><FaClock /></div>
